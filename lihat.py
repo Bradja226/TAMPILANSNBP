@@ -51,7 +51,12 @@ def tampil_massal():
     ok = tb[tb["Peluang P1"].notna()]
     if st.button("🔄 Muat ulang sekarang"):
         st.rerun()
-    st.caption(f"Otomatis diperbarui tiap {REFRESH_DETIK} detik · terakhir dibaca {pd.Timestamp.now():%H:%M:%S}")
+    sumber = storage.nama_mode()
+    if "File lokal" in sumber:
+        st.warning("⚠️ Dashboard ini BELUM terhubung ke Google Sheets, jadi tabel kosong. Buka ⋮ → Settings → Secrets "
+                   "pada aplikasi ini, tempel `sheet_id` dan `gcp_json` yang sama dengan aplikasi Edit, lalu Save.")
+    st.caption(f"Sumber data: {sumber} · {len(tb[tb['Peluang P1'].notna()])} siswa terpetakan · "
+               f"diperbarui otomatis tiap {REFRESH_DETIK} detik · terakhir dibaca {pd.Timestamp.now():%H:%M:%S}")
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Total siswa", len(tb))
@@ -97,6 +102,7 @@ def tampil_massal():
     for c in ("Status P1", "Status P2"):
         t[c] = t[c].map(lambda s: f"{IKON[s]} {s}" if s else "")
     st.dataframe(t, hide_index=True, height=520, column_config={
+        "PTN Pilihan 1": st.column_config.TextColumn(width="large"), "Prodi Pilihan 1": st.column_config.TextColumn(width="large"), "PTN Pilihan 2": st.column_config.TextColumn(width="large"), "Prodi Pilihan 2": st.column_config.TextColumn(width="large"), "Nama Siswa": st.column_config.TextColumn(width="medium"), "Saran Strategi": st.column_config.TextColumn(width="large"),
         "Nilai Komposit": st.column_config.NumberColumn(format="%.2f"),
         "Nilai Pendukung P1": st.column_config.NumberColumn(format="%.2f"),
         "Nilai Pendukung P2": st.column_config.NumberColumn(format="%.2f"),
@@ -135,7 +141,8 @@ with tab_prodi:
         "dt_2026": "DT 2026", "keketatan_prodi": "Keketatan", "alumni_jur": "Alumni Jurusan",
         "jenis_mapel": "Mapel Pendukung", "provinsi": "Provinsi", "kota": "Kab/Kota"})
     st.dataframe(out, hide_index=True, height=560,
-                 column_config={"Keketatan": st.column_config.NumberColumn(format="%.3f")})
+                 column_config={"Keketatan": st.column_config.NumberColumn(format="%.3f"),
+                                "PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large"), "Mapel Pendukung": st.column_config.TextColumn(width="medium")})
     tombol_unduh(out, "data_prodi.csv")
 
 with tab_ptn:
