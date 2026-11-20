@@ -9,6 +9,7 @@ import streamlit as st
 
 import model as m
 import storage
+from exportxl import FMT_MASSAL, tabel_prodi, tombol_xlsx
 
 st.set_page_config(page_title="Rasionalisasi SNBP 2027", page_icon="🎓", layout="wide")
 
@@ -278,22 +279,18 @@ with tab_rek:
         st.caption(f"Menampilkan **{len(out):,}** prodi, diurutkan dari peluang tertinggi ({sumber}). "
                    "Klik judul kolom untuk mengurutkan ulang.".replace(",", "."))
         st.dataframe(out, hide_index=True, height=520, column_config={
+            "Nama PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large"), "Mapel Pendukung": st.column_config.TextColumn(width="medium"),
             "Keketatan Prodi (%)": st.column_config.NumberColumn(format="%.1f"),
             "Peluang P1 (%)": st.column_config.NumberColumn(format="%.1f"),
             "Peluang P2 (%)": st.column_config.NumberColumn(format="%.1f"),
             "DT 2026": st.column_config.NumberColumn(format="%d")})
-        st.download_button("⬇️ Unduh hasil (CSV)", out.to_csv(index=False).encode("utf-8-sig"),
-                           file_name=f"rekomendasi_{SIS['nama'].replace(' ', '_')}.csv", mime="text/csv")
+        out_x = out.assign(**{"Status P1": dr["status1"].values, "Status P2": dr["status2"].values})
+        tombol_xlsx("⬇️ Unduh hasil (Excel)", out_x, f"rekomendasi_{SIS['nama'].replace(' ', '_')}.xlsx", "Rekomendasi",
+                    {"Keketatan Prodi (%)": "0.0", "Peluang P1 (%)": "0.0", "Peluang P2 (%)": "0.0", "DT 2026": "0"},
+                    key="x_rek")
 
 
 # ================================================================== TAB 3 — PEMETAAN MASSAL
-def to_excel(df):
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as w:
-        df.to_excel(w, index=False, sheet_name="Pemetaan")
-    return buf.getvalue()
-
-
 with tab_mas:
     tb = m.tabel_massal(R, PIL, cut_a, cut_k)
     terpetakan = tb[tb["Peluang P1"].notna()]
@@ -340,25 +337,21 @@ with tab_mas:
     for c in ("Status P1", "Status P2"):
         tampil[c] = tampil[c].map(lambda s: f"{IKON[s]} {s}" if s else "")
     st.dataframe(tampil, hide_index=True, height=480, column_config={
+        "PTN Pilihan 1": st.column_config.TextColumn(width="large"), "Prodi Pilihan 1": st.column_config.TextColumn(width="large"), "PTN Pilihan 2": st.column_config.TextColumn(width="large"), "Prodi Pilihan 2": st.column_config.TextColumn(width="large"), "Nama Siswa": st.column_config.TextColumn(width="medium"), "Saran Strategi": st.column_config.TextColumn(width="large"),
         "Nilai Komposit": st.column_config.NumberColumn(format="%.2f"),
         "Nilai Pendukung P1": st.column_config.NumberColumn(format="%.2f"),
         "Nilai Pendukung P2": st.column_config.NumberColumn(format="%.2f"),
         "Peluang P1": st.column_config.NumberColumn("Peluang P1 (%)", format="%.1f"),
         "Peluang P2": st.column_config.NumberColumn("Peluang P2 (%)", format="%.1f"),
         "Peluang Min. 1 Lolos": st.column_config.NumberColumn("Peluang min. 1 lolos (%)", format="%.1f")})
-    d1, d2, _ = st.columns([1, 1, 3])
-    d1.download_button("⬇️ Unduh Excel", to_excel(v), file_name="pemetaan_massal_snbp_2027.xlsx",
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    d2.download_button("⬇️ Unduh CSV", v.to_csv(index=False).encode("utf-8-sig"),
-                       file_name="pemetaan_massal_snbp_2027.csv", mime="text/csv")
+    tombol_xlsx("⬇️ Unduh Excel", v, "pemetaan_massal_snbp_2027.xlsx", "Pemetaan", FMT_MASSAL, key="x_mas")
 
     with st.expander("📥 Impor pilihan banyak siswa sekaligus (CSV / Excel)"):
         st.markdown("Unduh templat, isi kolom PTN & Prodi (harus sama dengan nama di database), lalu unggah kembali. "
                     "Nilai pendukung boleh dikosongkan → otomatis memakai rata-rata rapor siswa.")
         tmpl = pd.DataFrame({c: [""] * len(R.siswa) for c in m.TEMPLATE_COLS})
         tmpl["Nama Siswa"] = R.siswa["nama"].values
-        st.download_button("⬇️ Unduh templat", tmpl.to_csv(index=False).encode("utf-8-sig"),
-                           file_name="templat_pilihan_siswa.csv", mime="text/csv")
+        tombol_xlsx("⬇️ Unduh templat (Excel)", tmpl, "templat_pilihan_siswa.xlsx", "Templat", key="x_tmpl")
         if "pesan_impor" in st.session_state:
             n_ok, errs_ = st.session_state.pop("pesan_impor")
             st.success(f"{n_ok} siswa berhasil diimpor.")
@@ -442,4 +435,7 @@ with tab_ref:
         "ptn": "PTN", "prodi": "Program Studi", "jenjang": "Jenjang", "dt_2025": "DT 2025",
         "peminat_2025": "Peminat 2025", "dt_2026": "DT 2026", "keketatan_prodi": "Keketatan",
         "alumni_jur": "Alumni Jurusan", "jenis_mapel": "Mapel Pendukung", "provinsi": "Provinsi", "kota": "Kab/Kota"}),
-        hide_index=True, height=560, column_config={"Keketatan": st.column_config.NumberColumn(format="%.3f")})
+        hide_index=True, height=560, column_config={"Keketatan": st.column_config.NumberColumn(format="%.3f"),
+                                                    "PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large"), "Mapel Pendukung": st.column_config.TextColumn(width="medium")})
+    tombol_xlsx("⬇️ Unduh hasil (Excel)", tabel_prodi(d), "data_prodi.xlsx", "Data Prodi",
+                {"Keketatan": "0.000"}, key="x_prodi")

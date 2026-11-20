@@ -8,6 +8,7 @@ import streamlit as st
 
 import model as m
 import storage
+from exportxl import FMT_MASSAL, tombol_xlsx
 
 ALLOW_DOWNLOAD = False   # ubah ke True jika pengguna tampilan boleh mengunduh data
 REFRESH_DETIK = 30
@@ -35,9 +36,9 @@ def baca_pilihan():
         return {}
 
 
-def tombol_unduh(df, nama):
+def tombol_unduh(df, nama, sheet="Data", fmt=None):
     if ALLOW_DOWNLOAD:
-        st.download_button("⬇️ Unduh CSV", df.to_csv(index=False).encode("utf-8-sig"), file_name=nama, mime="text/csv")
+        tombol_xlsx("⬇️ Unduh Excel", df, nama, sheet, fmt, key="x_" + nama)
 
 
 st.title("👁️ Pemetaan SNBP 2027")
@@ -109,7 +110,7 @@ def tampil_massal():
         "Peluang P1": st.column_config.NumberColumn("Peluang P1 (%)", format="%.1f"),
         "Peluang P2": st.column_config.NumberColumn("Peluang P2 (%)", format="%.1f"),
         "Peluang Min. 1 Lolos": st.column_config.NumberColumn("Peluang min. 1 lolos (%)", format="%.1f")})
-    tombol_unduh(v, "pemetaan_massal.csv")
+    tombol_unduh(v, "pemetaan_massal.xlsx", "Pemetaan", FMT_MASSAL)
 
 
 with tab_mas:
@@ -143,7 +144,7 @@ with tab_prodi:
     st.dataframe(out, hide_index=True, height=560,
                  column_config={"Keketatan": st.column_config.NumberColumn(format="%.3f"),
                                 "PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large"), "Mapel Pendukung": st.column_config.TextColumn(width="medium")})
-    tombol_unduh(out, "data_prodi.csv")
+    tombol_unduh(out, "data_prodi.xlsx", "Data Prodi", {"Keketatan": "0.000"})
 
 with tab_ptn:
     f1, f2 = st.columns(2)
@@ -160,4 +161,4 @@ with tab_ptn:
                             "alumni_ptn": "Alumni PTN", "provinsi": "Provinsi", "kota": "Kab/Kota"})
     st.dataframe(out, hide_index=True, height=560,
                  column_config={"Keketatan Kampus": st.column_config.NumberColumn(format="%.4f")})
-    tombol_unduh(out, "data_ptn.csv")
+    tombol_unduh(out, "data_ptn.xlsx", "Data PTN", {"Keketatan Kampus": "0.0000"})
