@@ -5,6 +5,8 @@
 Yang disimpan hanya nomor urut siswa + pilihan PTN/prodi + nilai (tanpa nama/NISN).
 """
 import json
+import traceback
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -64,7 +66,12 @@ def _terjemah(e):
         hint = "Akses ditolak. Pastikan Sheet di-Share ke email robot sebagai Editor."
     else:
         hint = "Gagal terhubung ke Google Sheets."
-    return PenyimpananError(f"{hint} (detail: {n}: {s[:200]})")
+    try:
+        lokasi = " > ".join(f"{Path(f.filename).name}:{f.lineno} {f.name}"
+                            for f in traceback.extract_tb(e.__traceback__)[-4:])
+    except Exception:  # noqa: BLE001
+        lokasi = "-"
+    return PenyimpananError(f"{hint} (detail: {type(e).__module__}.{n} {e.args!r} | lokasi: {lokasi})")
 
 
 # ---------------------------------------------------------------- Google Sheets
