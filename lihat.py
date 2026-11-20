@@ -1,5 +1,5 @@
 """Dashboard TAMPILAN SAJA (read-only): Pemetaan Massal + Data Prodi + Data PTN.
-Membaca data/pilihan_siswa.csv yang sama dengan app.py, otomatis ter-refresh tiap 30 detik.
+Membaca penyimpanan yang sama dengan app.py (Google Sheets / CSV), otomatis ter-refresh tiap 30 detik.
 Tidak ada tombol simpan / hapus / impor di sini."""
 import numpy as np
 import pandas as pd
@@ -7,13 +7,13 @@ import plotly.express as px
 import streamlit as st
 
 import model as m
+import storage
 
 ALLOW_DOWNLOAD = False   # ubah ke True jika pengguna tampilan boleh mengunduh data
 REFRESH_DETIK = 30
 
 st.set_page_config(page_title="Pemetaan SNBP 2027 (Tampilan)", page_icon="👁️", layout="wide")
 IKON = {"AMAN": "🟢", "KOMPETITIF": "🟡", "BERISIKO": "🔴", "": ""}
-PIL_FILE = m.DATA / "pilihan_siswa.csv"
 st.markdown("<style>.block-container{padding-top:2rem;}</style>", unsafe_allow_html=True)
 
 
@@ -27,15 +27,12 @@ CUT_A, CUT_K = R.params["cut_aman"], R.params["cut_kompetitif"]
 
 
 def baca_pilihan():
-    """Baca file terbaru setiap kali dipanggil (inilah yang membuat data 'tersinkron')."""
-    data = {}
-    if PIL_FILE.exists():
-        try:
-            for r in pd.read_csv(PIL_FILE).to_dict("records"):
-                data[int(r["no"])] = {k: (None if pd.isna(v) else v) for k, v in r.items() if k != "no"}
-        except Exception:
-            pass
-    return data
+    """Baca data terbaru (cache 15 dtk) dari penyimpanan yang sama dengan dashboard Edit."""
+    try:
+        return storage.baca()
+    except Exception as e:  # noqa: BLE001
+        st.error(f"⚠️ Gagal membaca penyimpanan: {e}")
+        return {}
 
 
 def tombol_unduh(df, nama):
