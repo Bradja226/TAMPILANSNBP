@@ -296,7 +296,9 @@ with tab_rek:
         s1, s2 = st.columns([2, 1])
         judul_rek = s1.text_input("Judul daftar", value=f"Rekomendasi mapel {', '.join(acuan)}"[:80],
                                   key=f"jdl_{kunci}_{'|'.join(acuan)}")
-        batas_rek = s2.number_input("Jumlah prodi teratas", 10, 300, 100, 10, key=f"bts_{kunci}")
+        semua_rek = s2.checkbox("Tampilkan semua prodi", key=f"all_{kunci}")
+        batas_rek = s2.number_input("Jumlah prodi teratas", min_value=10, value=100, step=10, key=f"bts_{kunci}",
+                                    disabled=semua_rek)
         cat_rek = st.text_area("Catatan untuk siswa (opsional)", key=f"cat_{kunci}_{'|'.join(acuan)}", height=70,
                                placeholder="mis. Fokus ke prodi yang cocok dengan minat sains kamu.")
         if st.button("💾 Simpan sebagai daftar siswa", key=f"simpan_rek_{no}", type="primary"):
@@ -307,7 +309,7 @@ with tab_rek:
                     "no": int(no), "tanggal": wib.strftime("%Y-%m-%d"), "judul": judul_rek.strip() or "Daftar rekomendasi",
                     "catatan": cat_rek.strip(), "sumber": sumber, "mapel": "|".join(acuan), "nilai": float(nilai_rek),
                     "status_filter": status_filter, "jenjang": "|".join(jenjang), "provinsi": "|".join(prov),
-                    "ptn": "|".join(ptn_f), "cari": cari, "sembunyi": int(sembunyi), "batas": int(batas_rek)})
+                    "ptn": "|".join(ptn_f), "cari": cari, "sembunyi": int(sembunyi), "batas": 100000 if semua_rek else int(batas_rek)})
                 st.toast("Daftar tersimpan untuk siswa ✅")
             except Exception as e:  # noqa: BLE001
                 st.error(f"Gagal menyimpan daftar: {e}")
