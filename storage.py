@@ -183,3 +183,125 @@ def perbarui(perubahan):
     _tulis(data)
     baca.clear()
     return data
+
+
+# =====================================================================
+#  Daftar rekomendasi yang disimpan untuk siswa (ditampilkan di Portal Siswa)
+#  Disimpan sebagai "resep" (mapel + filter), bukan salinan tabel -> ringan & selalu mengikuti data terbaru.
+# =====================================================================
+REK_SHEET = "Rekomendasi"
+REK_COLS = ["id", "no", "tanggal", "judul", "catatan", "sumber", "mapel", "nilai", "status_filter",
+            "jenjang", "provinsi", "ptn", "cari", "sembunyi", "batas"]
+REK_CSV = m.DATA / "rekomendasi_siswa.csv"
+
+
+@st.cache_resource(show_spinner=False)
+def _worksheet_rek(sid, info_str):
+    import gspread
+    gc = gspread.service_account_from_dict(json.loads(info_str), scopes=SCOPES)
+    sh = gc.open_by_key(sid)
+    try:
+        ws = sh.worksheet(REK_SHEET)
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title=REK_SHEET, rows=1000, cols=len(REK_COLS))
+    if ws.row_values(1) != REK_COLS:
+        ws.update(range_name="A1", values=[REK_COLS])
+    return ws
+
+
+def _f(v, default=0.0):
+    try:
+        x = float(v)
+        return default if np.isnan(x) else x
+    except (TypeError, ValueError):
+        return default
+
+
+def _s(v):
+    return "" if v is None or (isinstance(v, float) and np.isnan(v)) else str(v).strip()
+
+
+def _rapikan_rek(rows):
+    out = []
+    for r in rows:
+        try:
+            rid, no = int(r["id"]), int(r["no"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        out.append({
+            "id": rid, "no": no, "tanggal": _s(r.get("tanggal")), "judul": _s(r.get("judul")),
+            "catatan": _s(r.get("catatan")), "sumber": _s(r.get("sumber")) or "Pilihan 1",
+            "mapel": _s(r.get("mapel")), "nilai": _f(r.get("nilai")),
+            "status_filter": _s(r.get("status_filter")) or "Semua", "jenjang": _s(r.get("jenjang")),
+            "provinsi": _s(r.get("provinsi")), "ptn": _s(r.get("ptn")), "cari": _s(r.get("cari")),
+            "sembunyi": int(_f(r.get("sembunyi"), 1)), "batas": int(_f(r.get("batas"), 100)) or 100})
+    return sorted(out, key=lambda x: x["id"])
+
+
+def _baca_rek_mentah():
+    cfg = _secrets()
+    if cfg:
+        try:
+            ws = _worksheet_rek(*cfg)
+            rows = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
+        except PenyimpananError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise _terjemah(e)
+        return _rapikan_rek(rows)
+    if REK_CSV.exists():
+        try:
+            return _rapikan_rek(pd.read_csv(REK_CSV, keep_default_na=False).to_dict("records"))
+        except Exception:
+            return []
+    return []
+
+
+def _tulis_rek(rows):
+    from openpyxl.utils import get_column_letter
+    baris = [[_py(r.get(k)) for k in REK_COLS] for r in rows]
+    cfg = _secrets()
+    if cfg:
+        try:
+            ws = _worksheet_rek(*cfg)
+            values = [REK_COLS] + baris
+            lama = len(ws.col_values(1))
+            if ws.row_count < len(values):
+                ws.add_rows(len(values) - ws.row_count + 50)
+            if ws.col_count < len(REK_COLS):
+                ws.add_cols(len(REK_COLS) - ws.col_count)
+            ws.update(range_name="A1", values=values)
+            if lama > len(values):
+                ws.batch_clear([f"A{len(values) + 1}:{get_column_letter(len(REK_COLS))}{lama}"])
+        except PenyimpananError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise _terjemah(e)
+        return
+    try:
+        pd.DataFrame(baris, columns=REK_COLS).to_csv(REK_CSV, index=False)
+    except OSError:
+        raise PenyimpananError("Tidak bisa menulis file di server ini (read-only). Aktifkan penyimpanan Google Sheets.")
+
+
+@st.cache_data(ttl=15, show_spinner=False)
+def baca_rek():
+    """Semua daftar rekomendasi (cache 15 detik)."""
+    return _baca_rek_mentah()
+
+
+def tambah_rek(rec):
+    """Tambah satu daftar. `id` dibuat otomatis. Mengembalikan seluruh daftar terbaru."""
+    rows = _baca_rek_mentah()
+    rec = dict(rec, id=max([r["id"] for r in rows], default=0) + 1)
+    rows.append(_rapikan_rek([rec])[0])
+    _tulis_rek(rows)
+    baca_rek.clear()
+    return rows
+
+
+def hapus_rek(rid):
+    rows = [r for r in _baca_rek_mentah() if r["id"] != int(rid)]
+    _tulis_rek(rows)
+    baca_rek.clear()
+    return rows

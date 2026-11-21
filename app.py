@@ -9,6 +9,7 @@ import streamlit as st
 
 import model as m
 import storage
+import tautan
 from exportxl import FMT_MASSAL, tabel_prodi, tombol_xlsx
 
 st.set_page_config(page_title="Rasionalisasi SNBP 2027", page_icon="🎓", layout="wide")
@@ -289,6 +290,57 @@ with tab_rek:
                     {"Keketatan Prodi (%)": "0.0", "Peluang P1 (%)": "0.0", "Peluang P2 (%)": "0.0", "DT 2026": "0"},
                     key="x_rek")
 
+        st.divider()
+        st.markdown("#### 📌 Simpan daftar ini untuk siswa")
+        st.caption("Daftar akan muncul otomatis di tautan pribadi siswa (lihat bagian bawah tab ini).")
+        s1, s2 = st.columns([2, 1])
+        judul_rek = s1.text_input("Judul daftar", value=f"Rekomendasi mapel {', '.join(acuan)}"[:80],
+                                  key=f"jdl_{kunci}_{'|'.join(acuan)}")
+        batas_rek = s2.number_input("Jumlah prodi teratas", 10, 300, 100, 10, key=f"bts_{kunci}")
+        cat_rek = st.text_area("Catatan untuk siswa (opsional)", key=f"cat_{kunci}_{'|'.join(acuan)}", height=70,
+                               placeholder="mis. Fokus ke prodi yang cocok dengan minat sains kamu.")
+        if st.button("💾 Simpan sebagai daftar siswa", key=f"simpan_rek_{no}", type="primary"):
+            try:
+                import datetime as _dt
+                wib = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=7)))
+                storage.tambah_rek({
+                    "no": int(no), "tanggal": wib.strftime("%Y-%m-%d"), "judul": judul_rek.strip() or "Daftar rekomendasi",
+                    "catatan": cat_rek.strip(), "sumber": sumber, "mapel": "|".join(acuan), "nilai": float(nilai_rek),
+                    "status_filter": status_filter, "jenjang": "|".join(jenjang), "provinsi": "|".join(prov),
+                    "ptn": "|".join(ptn_f), "cari": cari, "sembunyi": int(sembunyi), "batas": int(batas_rek)})
+                st.toast("Daftar tersimpan untuk siswa ✅")
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Gagal menyimpan daftar: {e}")
+
+
+    st.divider()
+    st.markdown("#### 🔗 Tautan pribadi siswa (Portal Siswa)")
+    st.code(tautan.tautan(int(no)), language=None)
+    if not tautan.portal_url():
+        st.caption("Tautan masih berupa potongan (`?k=...`). Tambahkan `portal_url = \"https://alamat-portal-anda.streamlit.app\"` "
+                   "di Secrets aplikasi ini agar tautan lengkap.")
+    st.caption("Kirim tautan ini **hanya ke siswa yang bersangkutan**. Siapa pun yang memegang tautan bisa melihat halaman siswa ini.")
+    try:
+        daftar_s = [r for r in storage.baca_rek() if r["no"] == int(no)]
+    except Exception as e:  # noqa: BLE001
+        daftar_s = []
+        st.error(f"Gagal membaca daftar tersimpan: {e}")
+    with st.expander(f"Daftar tersimpan untuk siswa ini ({len(daftar_s)})"):
+        if daftar_s:
+            st.dataframe(pd.DataFrame([{"ID": r["id"], "Tanggal": r["tanggal"], "Judul": r["judul"], "Mapel": r["mapel"].replace("|", ", "),
+                                        "Filter": r["status_filter"], "Teratas": r["batas"]} for r in daftar_s]), hide_index=True)
+            hp1, hp2 = st.columns([3, 1])
+            hid = hp1.selectbox("Hapus daftar", [r["id"] for r in daftar_s], key=f"hapus_sel_{no}",
+                                format_func=lambda i: next(f"{r['tanggal']} · {r['judul']}" for r in daftar_s if r["id"] == i))
+            if hp2.button("🗑️ Hapus", key=f"hapus_rek_{no}"):
+                try:
+                    storage.hapus_rek(hid)
+                    st.rerun()
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Gagal menghapus: {e}")
+        else:
+            st.caption("Belum ada daftar tersimpan.")
+
 
 # ================================================================== TAB 3 — PEMETAAN MASSAL
 with tab_mas:
@@ -368,6 +420,16 @@ with tab_mas:
                 st.rerun()
             except Exception as e:  # noqa: BLE001
                 st.error(f"Gagal membaca file: {e}")
+
+
+    with st.expander("🔗 Tautan Portal Siswa untuk semua siswa"):
+        st.markdown("Satu tautan pribadi per siswa. Kirim ke masing-masing siswa (mis. lewat WhatsApp). "
+                    "Siapa pun yang memegang tautan bisa melihat halaman siswa tersebut.")
+        if not tautan.portal_url():
+            st.warning("`portal_url` belum diisi di Secrets, jadi tautan di bawah masih potongan (`?k=...`).")
+        tdf = pd.DataFrame({"No": R.siswa["no"], "Nama Siswa": R.siswa["nama"], "Kelas": R.siswa["kelas"],
+                            "Tautan": [tautan.tautan(n) for n in R.siswa["no"]]})
+        tombol_xlsx("⬇️ Unduh daftar tautan (Excel)", tdf, "tautan_portal_siswa.xlsx", "Tautan", key="x_tautan")
 
 
 # ================================================================== TAB 4 — MODEL & VALIDASI

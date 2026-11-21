@@ -227,3 +227,22 @@ def impor_pilihan(ref, df):
         if rec.get("ptn1") or rec.get("ptn2"):
             hasil[no] = rec
     return hasil, errs
+
+
+def saring_rek(d, sumber, status_filter, jenjang=(), provinsi=(), ptn=(), cari=""):
+    """Terapkan filter tab Rekomendasi pada hasil `rekomendasi()` lalu urutkan dari peluang tertinggi."""
+    kol_st = "status1" if sumber == "Pilihan 1" else "status2"
+    kol_p = "p1" if sumber == "Pilihan 1" else "p2"
+    if status_filter == "AMAN saja":
+        d = d[d[kol_st] == "AMAN"]
+    elif status_filter == "AMAN + KOMPETITIF":
+        d = d[d[kol_st].isin(["AMAN", "KOMPETITIF"])]
+    if jenjang:
+        d = d[d["jenjang"].isin(list(jenjang))]
+    if provinsi:
+        d = d[d["provinsi"].isin(list(provinsi))]
+    if ptn:
+        d = d[d["ptn"].isin(list(ptn))]
+    if cari:
+        d = d[d["prodi"].str.contains(cari, case=False, na=False, regex=False)]
+    return d.sort_values(kol_p, ascending=False)
