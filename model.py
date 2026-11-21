@@ -108,6 +108,15 @@ def load_ptn():
     return pd.read_csv(DATA / "ptn.csv")
 
 
+def load_batas():
+    """{nama_ptn: batas maksimal pendaftar}; kosong bila data/batas_ptn.csv belum ada."""
+    f = DATA / "batas_ptn.csv"
+    if not f.exists():
+        return {}
+    d = pd.read_csv(f)
+    return {r.ptn: int(r.batas) for r in d.itertuples()}
+
+
 def load_historis():
     return pd.read_csv(DATA / "historis.csv")
 
@@ -130,6 +139,7 @@ class Ref:
         self.ptn = load_ptn()
         self.prodi = load_prodi(self.ptn)
         self.siswa = load_siswa()
+        self.batas = load_batas()
         self.hist = load_historis()
         self.ptn_list = sorted(self.ptn["ptn"].unique())
         self.idx = {(r["ptn"], r["prodi"]): r for r in self.prodi.to_dict("records")}
@@ -249,3 +259,81 @@ def saring_rek(d, sumber, status_filter, jenjang=(), provinsi=(), ptn=(), cari="
     if cari:
         d = d[d["prodi"].str.contains(cari, case=False, na=False, regex=False)]
     return d.sort_values(kol_p, ascending=False)
+
+
+# =====================================================================
+#  Pemantau batas pendaftar per PTN
+# =====================================================================
+KOLOM_PTN = ["PTN", "Batas", "Terdaftar", "Sisa", "Melebihi", "Status"]
+KOLOM_ELIM = ["PTN", "Nama Siswa", "Kelas", "Pilihan", "Peluang (%)", "Urutan Peluang", "Batas", "Jumlah Pendaftar"]
+
+
+def _status_ptn(terdaftar, batas):
+    if batas is None or pd.isna(batas):
+        return "⚪ Tanpa batas"
+    if terdaftar > batas:
+        return "🔴 Melebihi"
+    if terdaftar == batas:
+        return "🟠 Penuh"
+    if terdaftar >= 0.7 * batas:
+        return "🟡 Hampir penuh"
+    return "🟢 Longgar"
+
+
+def analisis_batas(tb, batas):
+    """Pendaftar PTN = siswa yang memilihnya (Pilihan 1 / 2; siswa yang sama dihitung sekali).
+    Bila melebihi batas, yang DIELIMINASI adalah yang peluangnya paling kecil (seri: peringkat lebih rendah kalah).
+    Mengembalikan (per_siswa {no: (status, teks_otomatis)}, per_ptn DataFrame, eliminasi DataFrame)."""
+    rows = []
+    for r in tb.to_dict("records"):
+        for k in ("1", "2"):
+            ptn, p = r.get(f"PTN Pilihan {k}"), r.get(f"Peluang P{k}")
+            if isinstance(ptn, str) and ptn and p is not None and not pd.isna(p):
+                rows.append({"no": int(r["No"]), "nama": r["Nama Siswa"], "kelas": r["Kelas"], "peringkat": int(r["Peringkat"]),
+                             "k": int(k), "ptn": ptn, "p": float(p)})
+    if not rows:
+        return {}, pd.DataFrame(columns=KOLOM_PTN), pd.DataFrame(columns=KOLOM_ELIM)
+    d = pd.DataFrame(rows)
+    g = d.groupby(["ptn", "no"], as_index=False).agg(
+        p=("p", "max"), pil=("k", lambda s: " & ".join(str(x) for x in sorted(set(s)))),
+        nama=("nama", "first"), kelas=("kelas", "first"), peringkat=("peringkat", "first"))
+    g = g.sort_values(["ptn", "p", "peringkat"], ascending=[True, False, True]).reset_index(drop=True)
+    g["urutan"] = g.groupby("ptn").cumcount() + 1
+    g["jumlah"] = g.groupby("ptn")["no"].transform("size")
+    g["batas"] = g["ptn"].map(batas)
+    g["lewat"] = g["batas"].notna() & (g["urutan"] > g["batas"])
+
+    per_ptn = g.groupby("ptn").agg(Terdaftar=("no", "size"), Batas=("batas", "first"), Melebihi=("lewat", "sum")).reset_index()
+    per_ptn["Sisa"] = (per_ptn["Batas"] - per_ptn["Terdaftar"]).clip(lower=0)
+    per_ptn["Status"] = [_status_ptn(t, b) for t, b in zip(per_ptn["Terdaftar"], per_ptn["Batas"])]
+    per_ptn = per_ptn.rename(columns={"ptn": "PTN"}).sort_values(["Melebihi", "Terdaftar"], ascending=False)[KOLOM_PTN].reset_index(drop=True)
+
+    per = {}
+    for no, grp in g.groupby("no"):
+        lw = grp[grp["lewat"]]
+        if len(lw):
+            teks = " | ".join(f"Pilihan {r.pil} ({r.ptn}) melebihi batas: urutan peluang {r.urutan} dari {r.jumlah}, "
+                              f"batas {int(r.batas)} → perlu ganti pilihan" for r in lw.itertuples())
+            per[int(no)] = ("⚠️ Lewat batas", teks)
+        else:
+            per[int(no)] = ("✅ Dalam batas", "")
+    e = g[g["lewat"]].sort_values(["ptn", "p"])
+    elim = pd.DataFrame({"PTN": e["ptn"], "Nama Siswa": e["nama"], "Kelas": e["kelas"], "Pilihan": e["pil"],
+                         "Peluang (%)": e["p"] * 100, "Urutan Peluang": e["urutan"], "Batas": e["batas"].astype("Int64"),
+                         "Jumlah Pendaftar": e["jumlah"]}).reset_index(drop=True)
+    return per, per_ptn, elim[KOLOM_ELIM]
+
+
+def tambahkan_info_batas(R, tb, catatan):
+    """Tambah kolom 'Status Batas' dan 'Keterangan' ke tabel massal.
+    Keterangan = catatan manual (jika ada) kalau tidak, teks otomatis dari analisis batas."""
+    tb = tb.copy()
+    if not R.batas:
+        tb["Status Batas"] = ""
+        tb["Keterangan"] = [(catatan or {}).get(int(n)) or "" for n in tb["No"]]
+        return tb, pd.DataFrame(columns=KOLOM_PTN), pd.DataFrame(columns=KOLOM_ELIM), {}
+    per, per_ptn, elim = analisis_batas(tb, R.batas)
+    auto = {int(n): per.get(int(n), ("", ""))[1] for n in tb["No"]}
+    tb["Status Batas"] = [per.get(int(n), ("", ""))[0] for n in tb["No"]]
+    tb["Keterangan"] = [(catatan or {}).get(int(n)) or auto[int(n)] for n in tb["No"]]
+    return tb, per_ptn, elim, auto

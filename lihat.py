@@ -7,6 +7,7 @@ import plotly.express as px
 import streamlit as st
 
 import model as m
+import batas_ui
 import storage
 from exportxl import FMT_MASSAL, tombol_xlsx
 
@@ -49,6 +50,12 @@ tab_mas, tab_prodi, tab_ptn = st.tabs(["👥 Pemetaan Massal", "📚 Data Prodi"
 @st.fragment(run_every=REFRESH_DETIK)
 def tampil_massal():
     tb = m.tabel_massal(R, baca_pilihan(), CUT_A, CUT_K)
+    try:
+        ket = storage.baca_ket()
+    except Exception as e:  # noqa: BLE001
+        ket = {}
+        st.error(f"⚠️ Gagal membaca keterangan: {e}")
+    tb, per_ptn, elim, _ = m.tambahkan_info_batas(R, tb, ket)
     ok = tb[tb["Peluang P1"].notna()]
     if st.button("🔄 Muat ulang sekarang"):
         st.rerun()
@@ -79,12 +86,15 @@ def tampil_massal():
         g2.plotly_chart(px.bar(top, x="Jumlah siswa", y="PTN", orientation="h", title="10 PTN terbanyak dipilih (Pilihan 1)")
                         .update_layout(height=300, yaxis={"autorange": "reversed"}, yaxis_title=None), key="v_top")
 
+    batas_ui.render_pemantau(R, per_ptn, elim, "v")
+
     f1, f2, f3, f4 = st.columns(4)
     kelas_f = f1.multiselect("Kelas", sorted(tb["Kelas"].unique()), key="v_kelas")
     strat_f = f2.multiselect("Saran strategi", sorted(x for x in tb["Saran Strategi"].unique() if x), key="v_strat_f")
     ptn_f = f3.multiselect("PTN Pilihan 1", sorted(ok["PTN Pilihan 1"].dropna().unique()), key="v_ptn")
     cari = f4.text_input("Cari nama siswa", key="v_cari")
     hanya = st.checkbox("Hanya yang sudah dipetakan", key="v_hanya")
+    sb = st.selectbox("Status batas PTN", ["Semua", "⚠️ Lewat batas", "✅ Dalam batas"], key="v_sb")
     v = tb.copy()
     if kelas_f:
         v = v[v["Kelas"].isin(kelas_f)]
@@ -96,6 +106,8 @@ def tampil_massal():
         v = v[v["Nama Siswa"].str.contains(cari, case=False, na=False)]
     if hanya:
         v = v[v["Peluang P1"].notna()]
+    if sb != "Semua":
+        v = v[v["Status Batas"] == sb]
 
     t = v.copy()
     for c in ("Peluang P1", "Peluang P2", "Peluang Min. 1 Lolos"):
@@ -103,6 +115,7 @@ def tampil_massal():
     for c in ("Status P1", "Status P2"):
         t[c] = t[c].map(lambda s: f"{IKON[s]} {s}" if s else "")
     st.dataframe(t, hide_index=True, height=520, column_config={
+        "Keterangan": st.column_config.TextColumn(width="large"),
         "PTN Pilihan 1": st.column_config.TextColumn(width="large"), "Prodi Pilihan 1": st.column_config.TextColumn(width="large"), "PTN Pilihan 2": st.column_config.TextColumn(width="large"), "Prodi Pilihan 2": st.column_config.TextColumn(width="large"), "Nama Siswa": st.column_config.TextColumn(width="medium"), "Saran Strategi": st.column_config.TextColumn(width="large"),
         "Nilai Komposit": st.column_config.NumberColumn(format="%.2f"),
         "Nilai Pendukung P1": st.column_config.NumberColumn(format="%.2f"),

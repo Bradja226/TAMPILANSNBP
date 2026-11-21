@@ -1,4 +1,5 @@
 """Dashboard interaktif Rasionalisasi SNBP 2027 (Streamlit)."""
+import hashlib
 import io
 
 import numpy as np
@@ -8,6 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import model as m
+import batas_ui
 import storage
 import tautan
 from exportxl import FMT_MASSAL, tabel_prodi, tombol_xlsx, tombol_xlsx_multi
@@ -347,6 +349,12 @@ with tab_rek:
 # ================================================================== TAB 3 — PEMETAAN MASSAL
 with tab_mas:
     tb = m.tabel_massal(R, PIL, cut_a, cut_k)
+    try:
+        KET = storage.baca_ket()
+    except Exception as e:  # noqa: BLE001
+        KET = {}
+        st.error(f"⚠️ Gagal membaca keterangan tersimpan: {e}")
+    tb, per_ptn, elim, auto_ket = m.tambahkan_info_batas(R, tb, KET)
     terpetakan = tb[tb["Peluang P1"].notna()]
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Total siswa", len(tb))
@@ -370,11 +378,14 @@ with tab_mas:
         fig.update_layout(barmode="group", title="Sebaran status", height=300)
         g2.plotly_chart(fig, key="g_status")
 
+    batas_ui.render_pemantau(R, per_ptn, elim, "mas")
+
     f1, f2, f3, f4 = st.columns(4)
     kelas_f = f1.multiselect("Kelas", sorted(tb["Kelas"].unique()))
     strat_f = f2.multiselect("Saran strategi", sorted(x for x in tb["Saran Strategi"].unique() if x))
     cari = f3.text_input("Cari nama siswa")
     hanya = f4.checkbox("Hanya yang sudah dipetakan")
+    sb = st.selectbox("Status batas PTN", ["Semua", "⚠️ Lewat batas", "✅ Dalam batas"], key="mas_sb")
     v = tb.copy()
     if kelas_f:
         v = v[v["Kelas"].isin(kelas_f)]
@@ -384,13 +395,19 @@ with tab_mas:
         v = v[v["Nama Siswa"].str.contains(cari, case=False, na=False)]
     if hanya:
         v = v[v["Peluang P1"].notna()]
+    if sb != "Semua":
+        v = v[v["Status Batas"] == sb]
 
     tampil = v.copy()
     for c in ("Peluang P1", "Peluang P2", "Peluang Min. 1 Lolos"):
         tampil[c] = tampil[c] * 100
     for c in ("Status P1", "Status P2"):
         tampil[c] = tampil[c].map(lambda s: f"{IKON[s]} {s}" if s else "")
-    st.dataframe(tampil, hide_index=True, height=480, column_config={
+    ver = st.session_state.setdefault("ver_ket", 0)
+    kunci_ed = hashlib.md5(",".join(map(str, tampil["No"])).encode()).hexdigest()[:8]
+    ed = st.data_editor(tampil, hide_index=True, height=480, key=f"ed_ket_{ver}_{kunci_ed}",
+                        disabled=[c for c in tampil.columns if c != "Keterangan"], column_config={
+        "Keterangan": st.column_config.TextColumn(width="large", help="Bisa diketik langsung. Kosongkan sel untuk kembali ke isi otomatis."),
         "PTN Pilihan 1": st.column_config.TextColumn(width="large"), "Prodi Pilihan 1": st.column_config.TextColumn(width="large"), "PTN Pilihan 2": st.column_config.TextColumn(width="large"), "Prodi Pilihan 2": st.column_config.TextColumn(width="large"), "Nama Siswa": st.column_config.TextColumn(width="medium"), "Saran Strategi": st.column_config.TextColumn(width="large"),
         "Nilai Komposit": st.column_config.NumberColumn(format="%.2f"),
         "Nilai Pendukung P1": st.column_config.NumberColumn(format="%.2f"),
@@ -398,6 +415,27 @@ with tab_mas:
         "Peluang P1": st.column_config.NumberColumn("Peluang P1 (%)", format="%.1f"),
         "Peluang P2": st.column_config.NumberColumn("Peluang P2 (%)", format="%.1f"),
         "Peluang Min. 1 Lolos": st.column_config.NumberColumn("Peluang min. 1 lolos (%)", format="%.1f")})
+    st.caption("✍️ Kolom **Keterangan** bisa diketik langsung. Isi awalnya otomatis (info batas PTN); kosongkan sel untuk "
+               "kembali ke isi otomatis. Klik **Simpan keterangan** setelah selesai, **sebelum** mengganti filter.")
+    if st.button("💾 Simpan keterangan", key="simpan_ket"):
+        try:
+            asli_k = tampil.set_index("No")["Keterangan"]
+            baru_k = ed.set_index("No")["Keterangan"]
+            perubahan = {}
+            for n_ in baru_k.index:
+                b_ = baru_k[n_].strip() if isinstance(baru_k[n_], str) else ""
+                a_ = asli_k[n_] if isinstance(asli_k[n_], str) else ""
+                if b_ != a_:
+                    perubahan[int(n_)] = None if (b_ == "" or b_ == auto_ket.get(int(n_), "")) else b_
+            if perubahan:
+                storage.perbarui_ket(perubahan)
+                st.session_state["ver_ket"] = ver + 1
+                st.toast(f"Keterangan {len(perubahan)} siswa tersimpan ✅")
+                st.rerun()
+            else:
+                st.toast("Tidak ada perubahan untuk disimpan.")
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Gagal menyimpan keterangan: {e}")
     tombol_xlsx("⬇️ Unduh Excel", v, "pemetaan_massal_snbp_2027.xlsx", "Pemetaan", FMT_MASSAL, key="x_mas")
 
     with st.expander("📥 Impor pilihan banyak siswa sekaligus (CSV / Excel)"):

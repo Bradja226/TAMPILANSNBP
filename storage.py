@@ -305,3 +305,102 @@ def hapus_rek(rid):
     _tulis_rek(rows)
     baca_rek.clear()
     return rows
+
+
+# =====================================================================
+#  Keterangan manual per siswa (kolom "Keterangan" di Pemetaan Massal)
+# =====================================================================
+KET_SHEET = "Keterangan"
+KET_COLS = ["no", "catatan"]
+KET_CSV = m.DATA / "keterangan_siswa.csv"
+
+
+@st.cache_resource(show_spinner=False)
+def _worksheet_ket(sid, info_str):
+    import gspread
+    gc = gspread.service_account_from_dict(json.loads(info_str), scopes=SCOPES)
+    sh = gc.open_by_key(sid)
+    try:
+        ws = sh.worksheet(KET_SHEET)
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title=KET_SHEET, rows=500, cols=len(KET_COLS))
+    if ws.row_values(1) != KET_COLS:
+        ws.update(range_name="A1", values=[KET_COLS])
+    return ws
+
+
+def _rapikan_ket(rows):
+    out = {}
+    for r in rows:
+        try:
+            no = int(r["no"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        t = _s(r.get("catatan"))
+        if t:
+            out[no] = t
+    return out
+
+
+def _baca_ket_mentah():
+    cfg = _secrets()
+    if cfg:
+        try:
+            rows = _worksheet_ket(*cfg).get_all_records(value_render_option="UNFORMATTED_VALUE")
+        except PenyimpananError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise _terjemah(e)
+        return _rapikan_ket(rows)
+    if KET_CSV.exists():
+        try:
+            return _rapikan_ket(pd.read_csv(KET_CSV, keep_default_na=False).to_dict("records"))
+        except Exception:
+            return {}
+    return {}
+
+
+def _tulis_ket(data):
+    baris = [[int(no), str(t)] for no, t in sorted(data.items())]
+    cfg = _secrets()
+    if cfg:
+        try:
+            ws = _worksheet_ket(*cfg)
+            values = [KET_COLS] + baris
+            lama = len(ws.col_values(1))
+            if ws.row_count < len(values):
+                ws.add_rows(len(values) - ws.row_count + 50)
+            if ws.col_count < len(KET_COLS):
+                ws.add_cols(len(KET_COLS) - ws.col_count)
+            ws.update(range_name="A1", values=values)
+            if lama > len(values):
+                ws.batch_clear([f"A{len(values) + 1}:B{lama}"])
+        except PenyimpananError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise _terjemah(e)
+        return
+    try:
+        pd.DataFrame(baris, columns=KET_COLS).to_csv(KET_CSV, index=False)
+    except OSError:
+        raise PenyimpananError("Tidak bisa menulis file di server ini (read-only). Aktifkan penyimpanan Google Sheets.")
+
+
+@st.cache_data(ttl=15, show_spinner=False)
+def baca_ket():
+    """{no_siswa: catatan manual} (cache 15 detik)."""
+    return _baca_ket_mentah()
+
+
+def perbarui_ket(perubahan):
+    """perubahan = {no: teks | None/'' (= hapus catatan, kembali ke teks otomatis)}. Membaca data terbaru dulu lalu menggabungkan."""
+    data = _baca_ket_mentah()
+    for no, t in perubahan.items():
+        t = _s(t)
+        if t:
+            data[int(no)] = t
+        else:
+            data.pop(int(no), None)
+    _tulis_ket(data)
+    baca_ket.clear()
+    return data
