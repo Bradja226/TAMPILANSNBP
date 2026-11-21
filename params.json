@@ -1,0 +1,12 @@
+{
+  "intercept": -29.422634,
+  "nilai": 0.30519,
+  "pendukung": 0.218274,
+  "alumni_ptn": 0.007207,
+  "alumni_jur": 0.076843,
+  "keketatan_prodi": 0.031406,
+  "keketatan_kampus": 0.020495,
+  "pilihan_2": -0.935881,
+  "cut_aman": 0.15,
+  "cut_kompetitif": 0.1122
+}
