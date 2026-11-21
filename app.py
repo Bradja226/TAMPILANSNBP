@@ -10,7 +10,7 @@ import streamlit as st
 import model as m
 import storage
 import tautan
-from exportxl import FMT_MASSAL, tabel_prodi, tombol_xlsx
+from exportxl import FMT_MASSAL, tabel_prodi, tombol_xlsx, tombol_xlsx_multi
 
 st.set_page_config(page_title="Rasionalisasi SNBP 2027", page_icon="🎓", layout="wide")
 
@@ -66,7 +66,7 @@ with st.sidebar:
     info = R.siswa.set_index("no")
     no = st.selectbox(
         "Pilih siswa", opsi_siswa,
-        format_func=lambda n: f"{n:03d} · {info.loc[n, 'nama']} ({info.loc[n, 'kelas']})",
+        format_func=lambda n: f"#{info.loc[n, 'peringkat']} · {info.loc[n, 'nama']} ({info.loc[n, 'kelas']})",
         help="Ketik untuk mencari nama siswa.",
     )
     SIS = R.siswa[R.siswa["no"] == no].iloc[0]
@@ -424,14 +424,29 @@ with tab_mas:
                 st.error(f"Gagal membaca file: {e}")
 
 
-    with st.expander("🔗 Tautan Portal Siswa untuk semua siswa"):
-        st.markdown("Satu tautan pribadi per siswa. Kirim ke masing-masing siswa (mis. lewat WhatsApp). "
-                    "Siapa pun yang memegang tautan bisa melihat halaman siswa tersebut.")
+    with st.expander("🔗 Daftar tautan siswa (siap dibagikan)"):
+        st.markdown("Tautan **tetap sama untuk tiap siswa** walau peringkat berubah. Urutan, peringkat, dan nama di daftar ini "
+                    "**selalu mengikuti data terbaru**, jadi cukup unduh ulang kapan pun dibutuhkan.")
         if not tautan.portal_url():
             st.warning("`portal_url` belum diisi di Secrets, jadi tautan di bawah masih potongan (`?k=...`).")
-        tdf = pd.DataFrame({"No": R.siswa["no"], "Nama Siswa": R.siswa["nama"], "Kelas": R.siswa["kelas"],
-                            "Tautan": [tautan.tautan(n) for n in R.siswa["no"]]})
-        tombol_xlsx("⬇️ Unduh daftar tautan (Excel)", tdf, "tautan_portal_siswa.xlsx", "Tautan", key="x_tautan")
+        tdf = R.siswa.sort_values(["peringkat", "no"])[["peringkat", "nama", "kelas", "no"]].rename(
+            columns={"peringkat": "Peringkat", "nama": "Nama Siswa", "kelas": "Kelas"})
+        tdf["Tautan"] = [tautan.tautan(n) for n in tdf["no"]]
+        kolom_t = ["Peringkat", "Nama Siswa", "Kelas", "Tautan"]
+        link_cols = ("Tautan",)
+        if tautan.portal_url():
+            from urllib.parse import quote
+            tdf["Kirim lewat WhatsApp"] = [
+                "https://wa.me/?text=" + quote(f"Halo {nm.title()}, ini tautan pribadi rekomendasi prodi SNBP kamu: {lk}")
+                for nm, lk in zip(tdf["Nama Siswa"], tdf["Tautan"])]
+            kolom_t.append("Kirim lewat WhatsApp")
+            link_cols = ("Tautan", "Kirim lewat WhatsApp")
+        tdf = tdf[kolom_t].reset_index(drop=True)
+        st.dataframe(tdf, hide_index=True, height=300, column_config={"Nama Siswa": st.column_config.TextColumn(width="large")})
+        lembar = [("Semua siswa", tdf, {}, link_cols)] + [
+            (f"Kelas {k}", tdf[tdf["Kelas"] == k].reset_index(drop=True), {}, link_cols) for k in sorted(tdf["Kelas"].unique())]
+        tombol_xlsx_multi("⬇️ Unduh daftar tautan (Excel: 1 lembar semua + 1 lembar per kelas)", lembar,
+                          "tautan_portal_siswa.xlsx", key="x_tautan")
 
 
 # ================================================================== TAB 4 — MODEL & VALIDASI

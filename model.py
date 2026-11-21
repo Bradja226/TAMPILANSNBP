@@ -90,7 +90,10 @@ def auc(y, score):
 
 # ---------- Data ----------
 def load_siswa():
-    return pd.read_csv(DATA / "siswa.csv", dtype={"nisn": str, "nis": str})
+    d = pd.read_csv(DATA / "siswa.csv")
+    if "peringkat" not in d.columns:      # peringkat eligible = urutan rata-rata rapor (tertinggi = 1)
+        d["peringkat"] = d["rata_rata"].rank(method="min", ascending=False).astype(int)
+    return d.sort_values(["peringkat", "no"]).reset_index(drop=True)
 
 
 def load_prodi(ptn: pd.DataFrame) -> pd.DataFrame:
@@ -178,7 +181,7 @@ def tabel_massal(ref, pilihan, cut_a, cut_k):
         p1 = r1["p"] if r1 else np.nan
         p2 = r2["p"] if r2 else np.nan
         rows.append({
-            "No": int(s["no"]), "Nama Siswa": s["nama"], "Kelas": s["kelas"],
+            "Peringkat": int(s["peringkat"]), "No": int(s["no"]), "Nama Siswa": s["nama"], "Kelas": s["kelas"],
             "Nilai Komposit": s["nilai_komposit"],
             "PTN Pilihan 1": rec.get("ptn1"), "Prodi Pilihan 1": rec.get("prodi1"),
             "Nilai Pendukung P1": r1["nilai"] if r1 else np.nan,
