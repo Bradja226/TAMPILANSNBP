@@ -108,13 +108,16 @@ def load_ptn():
     return pd.read_csv(DATA / "ptn.csv")
 
 
+def load_batas_df():
+    """Seluruh isi data/batas_ptn.csv (None bila belum ada)."""
+    f = DATA / "batas_ptn.csv"
+    return pd.read_csv(f) if f.exists() else None
+
+
 def load_batas():
     """{nama_ptn: batas maksimal pendaftar}; kosong bila data/batas_ptn.csv belum ada."""
-    f = DATA / "batas_ptn.csv"
-    if not f.exists():
-        return {}
-    d = pd.read_csv(f)
-    return {r.ptn: int(r.batas) for r in d.itertuples()}
+    d = load_batas_df()
+    return {} if d is None else {r.ptn: int(r.batas) for r in d.itertuples()}
 
 
 def load_historis():
@@ -139,6 +142,7 @@ class Ref:
         self.ptn = load_ptn()
         self.prodi = load_prodi(self.ptn)
         self.siswa = load_siswa()
+        self.batas_df = load_batas_df()
         self.batas = load_batas()
         self.hist = load_historis()
         self.ptn_list = sorted(self.ptn["ptn"].unique())
@@ -337,3 +341,14 @@ def tambahkan_info_batas(R, tb, catatan):
     tb["Status Batas"] = [per.get(int(n), ("", ""))[0] for n in tb["No"]]
     tb["Keterangan"] = [(catatan or {}).get(int(n)) or auto[int(n)] for n in tb["No"]]
     return tb, per_ptn, elim, auto
+
+
+def tabel_batas(R, per_ptn):
+    """Daftar SEMUA PTN beserta batasnya + pemakaian saat ini (0 bila belum ada yang memilih)."""
+    d = R.batas_df.merge(R.ptn[["ptn", "dt_2026", "keketatan_kampus"]], on="ptn", how="left")
+    u = per_ptn.set_index("PTN") if len(per_ptn) else pd.DataFrame(columns=KOLOM_PTN[1:])
+    d["terdaftar"] = d["ptn"].map(u["Terdaftar"]).fillna(0).astype(int) if len(u) else 0
+    d["melebihi"] = d["ptn"].map(u["Melebihi"]).fillna(0).astype(int) if len(u) else 0
+    d["sisa"] = (d["batas"] - d["terdaftar"]).clip(lower=0)
+    d["status"] = [_status_ptn(t, b) for t, b in zip(d["terdaftar"], d["batas"])]
+    return d

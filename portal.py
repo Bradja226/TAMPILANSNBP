@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 import model as m
+import batas_ui
 import storage
 import tautan
 from exportxl import tombol_xlsx
@@ -47,66 +48,79 @@ def aman_baca(fn, default):
         return default
 
 
-# ------------------------------------------------------------------ pilihan siswa saat ini
-rec_pil = aman_baca(storage.baca, {}).get(int(no))
-if rec_pil:
-    baris = []
-    for k, jud, p2 in (("1", "Pilihan 1", 0), ("2", "Pilihan 2", 1)):
-        r = m.evaluasi(R, SIS, rec_pil.get(f"ptn{k}"), rec_pil.get(f"prodi{k}"), rec_pil.get(f"nilai{k}"), p2, CUT_A, CUT_K)
-        if r:
-            baris.append({"Pilihan": jud, "PTN": r["row"]["ptn"], "Program Studi": r["row"]["prodi"],
-                          "Peluang (%)": r["p"] * 100, "Status": f"{IKON[r['status']]} {r['status']}"})
-    if baris:
-        st.subheader("Pilihan kamu saat ini")
-        st.dataframe(pd.DataFrame(baris), hide_index=True, column_config={
-            "Peluang (%)": st.column_config.NumberColumn(format="%.1f"),
-            "PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large")})
+tab_rekom, tab_batas = st.tabs(["📌 Rekomendasi untuk kamu", "🚦 Batas pendaftar PTN"])
 
-# ------------------------------------------------------------------ daftar rekomendasi
-st.subheader("Daftar rekomendasi untuk kamu")
-daftar = sorted([r for r in aman_baca(storage.baca_rek, []) if r["no"] == int(no)], key=lambda r: r["id"], reverse=True)
-if not daftar:
-    st.info("Belum ada daftar rekomendasi. Guru BK akan menambahkannya — silakan cek lagi nanti.")
+with tab_rekom:
+    # ------------------------------------------------------------------ pilihan siswa saat ini
+    rec_pil = aman_baca(storage.baca, {}).get(int(no))
+    if rec_pil:
+        baris = []
+        for k, jud, p2 in (("1", "Pilihan 1", 0), ("2", "Pilihan 2", 1)):
+            r = m.evaluasi(R, SIS, rec_pil.get(f"ptn{k}"), rec_pil.get(f"prodi{k}"), rec_pil.get(f"nilai{k}"), p2, CUT_A, CUT_K)
+            if r:
+                baris.append({"Pilihan": jud, "PTN": r["row"]["ptn"], "Program Studi": r["row"]["prodi"],
+                              "Peluang (%)": r["p"] * 100, "Status": f"{IKON[r['status']]} {r['status']}"})
+        if baris:
+            st.subheader("Pilihan kamu saat ini")
+            st.dataframe(pd.DataFrame(baris), hide_index=True, column_config={
+                "Peluang (%)": st.column_config.NumberColumn(format="%.1f"),
+                "PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large")})
 
-
-def tampil_daftar(rec):
-    acuan = _lst(rec["mapel"])
-    d, _ = m.rekomendasi(R, SIS, acuan, rec["nilai"], CUT_A, CUT_K, bool(rec["sembunyi"]))
-    d = m.saring_rek(d, rec["sumber"], rec["status_filter"], _lst(rec["jenjang"]), _lst(rec["provinsi"]),
-                     _lst(rec["ptn"]), rec["cari"]).head(rec["batas"])
-    st.caption(f"Mapel pendukung: **{', '.join(acuan) or '-'}** · nilai pendukung {rec['nilai']:.1f} · "
-               f"diurutkan menurut peluang sebagai **{rec['sumber']}** · filter: {rec['status_filter']}")
-    if rec["catatan"]:
-        st.info(rec["catatan"])
-    cari = st.text_input("Cari prodi / PTN di daftar ini", key=f"cari_{rec['id']}", placeholder="mis. teknik, IPB")
-    if cari:
-        d = d[d["prodi"].str.contains(cari, case=False, na=False, regex=False)
-              | d["ptn"].str.contains(cari, case=False, na=False, regex=False)]
-    out = pd.DataFrame({
-        "Nama PTN": d["ptn"], "Program Studi": d["prodi"], "Jenjang": d["jenjang"], "Daya Tampung 2026": d["dt_2026"],
-        "Peluang P1 (%)": d["p1"] * 100, "Status P1": d["status1"].map(lambda s: f"{IKON[s]} {s}"),
-        "Peluang P2 (%)": d["p2"] * 100, "Status P2": d["status2"].map(lambda s: f"{IKON[s]} {s}"),
-        "Provinsi": d["provinsi"]})
-    st.caption(f"{len(out)} prodi ditampilkan.")
-    st.dataframe(out, hide_index=True, height=min(560, 40 + 36 * max(len(out), 3)), column_config={
-        "Nama PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large"),
-        "Daya Tampung 2026": st.column_config.NumberColumn(format="%d"),
-        "Peluang P1 (%)": st.column_config.NumberColumn(format="%.1f"),
-        "Peluang P2 (%)": st.column_config.NumberColumn(format="%.1f")})
-    out_x = out.assign(**{"Status P1": d["status1"].values, "Status P2": d["status2"].values})
-    tombol_xlsx("⬇️ Unduh daftar ini (Excel)", out_x, f"rekomendasi_{rec['id']}.xlsx", "Rekomendasi",
-                {"Peluang P1 (%)": "0.0", "Peluang P2 (%)": "0.0", "Daya Tampung 2026": "0"}, key=f"x_{rec['id']}")
+    # ------------------------------------------------------------------ daftar rekomendasi
+    st.subheader("Daftar rekomendasi untuk kamu")
+    daftar = sorted([r for r in aman_baca(storage.baca_rek, []) if r["no"] == int(no)], key=lambda r: r["id"], reverse=True)
+    if not daftar:
+        st.info("Belum ada daftar rekomendasi. Guru BK akan menambahkannya — silakan cek lagi nanti.")
 
 
-for i, rec in enumerate(daftar):
-    with st.expander(f"📌 {rec['judul'] or 'Daftar rekomendasi'} · {rec['tanggal']}", expanded=(i == 0)):
-        tampil_daftar(rec)
+    def tampil_daftar(rec):
+        acuan = _lst(rec["mapel"])
+        d, _ = m.rekomendasi(R, SIS, acuan, rec["nilai"], CUT_A, CUT_K, bool(rec["sembunyi"]))
+        d = m.saring_rek(d, rec["sumber"], rec["status_filter"], _lst(rec["jenjang"]), _lst(rec["provinsi"]),
+                         _lst(rec["ptn"]), rec["cari"]).head(rec["batas"])
+        st.caption(f"Mapel pendukung: **{', '.join(acuan) or '-'}** · nilai pendukung {rec['nilai']:.1f} · "
+                   f"diurutkan menurut peluang sebagai **{rec['sumber']}** · filter: {rec['status_filter']}")
+        if rec["catatan"]:
+            st.info(rec["catatan"])
+        cari = st.text_input("Cari prodi / PTN di daftar ini", key=f"cari_{rec['id']}", placeholder="mis. teknik, IPB")
+        if cari:
+            d = d[d["prodi"].str.contains(cari, case=False, na=False, regex=False)
+                  | d["ptn"].str.contains(cari, case=False, na=False, regex=False)]
+        out = pd.DataFrame({
+            "Nama PTN": d["ptn"], "Program Studi": d["prodi"], "Jenjang": d["jenjang"], "Daya Tampung 2026": d["dt_2026"],
+            "Peluang P1 (%)": d["p1"] * 100, "Status P1": d["status1"].map(lambda s: f"{IKON[s]} {s}"),
+            "Peluang P2 (%)": d["p2"] * 100, "Status P2": d["status2"].map(lambda s: f"{IKON[s]} {s}"),
+            "Provinsi": d["provinsi"]})
+        st.caption(f"{len(out)} prodi ditampilkan.")
+        st.dataframe(out, hide_index=True, height=min(560, 40 + 36 * max(len(out), 3)), column_config={
+            "Nama PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large"),
+            "Daya Tampung 2026": st.column_config.NumberColumn(format="%d"),
+            "Peluang P1 (%)": st.column_config.NumberColumn(format="%.1f"),
+            "Peluang P2 (%)": st.column_config.NumberColumn(format="%.1f")})
+        out_x = out.assign(**{"Status P1": d["status1"].values, "Status P2": d["status2"].values})
+        tombol_xlsx("⬇️ Unduh daftar ini (Excel)", out_x, f"rekomendasi_{rec['id']}.xlsx", "Rekomendasi",
+                    {"Peluang P1 (%)": "0.0", "Peluang P2 (%)": "0.0", "Daya Tampung 2026": "0"}, key=f"x_{rec['id']}")
 
-with st.expander("ℹ️ Cara membaca tabel"):
-    st.markdown(
-        "- **Peluang P1** = perkiraan peluang lolos jika prodi itu kamu pilih sebagai **Pilihan 1**; **P2** jika sebagai **Pilihan 2** "
-        "(Pilihan 2 punya peluang lebih rendah).\n"
-        f"- 🟢 **AMAN** (≥ {CUT_A * 100:.0f}%): {ARTI['AMAN']} · 🟡 **KOMPETITIF** (≥ {CUT_K * 100:.1f}%): {ARTI['KOMPETITIF']} · "
-        f"🔴 **BERISIKO**: {ARTI['BERISIKO']}.\n"
-        "- Angka ini **perkiraan** dari model yang dilatih pada data pemetaan SNBP 2026 SMAN 1 Ciampea. Ini bukan jaminan hasil seleksi — "
-        "diskusikan pilihan akhir bersama guru BK dan orang tua.")
+
+    for i, rec in enumerate(daftar):
+        with st.expander(f"📌 {rec['judul'] or 'Daftar rekomendasi'} · {rec['tanggal']}", expanded=(i == 0)):
+            tampil_daftar(rec)
+
+    with st.expander("ℹ️ Cara membaca tabel"):
+        st.markdown(
+            "- **Peluang P1** = perkiraan peluang lolos jika prodi itu kamu pilih sebagai **Pilihan 1**; **P2** jika sebagai **Pilihan 2** "
+            "(Pilihan 2 punya peluang lebih rendah).\n"
+            f"- 🟢 **AMAN** (≥ {CUT_A * 100:.0f}%): {ARTI['AMAN']} · 🟡 **KOMPETITIF** (≥ {CUT_K * 100:.1f}%): {ARTI['KOMPETITIF']} · "
+            f"🔴 **BERISIKO**: {ARTI['BERISIKO']}.\n"
+            "- Angka ini **perkiraan** dari model yang dilatih pada data pemetaan SNBP 2026 SMAN 1 Ciampea. Ini bukan jaminan hasil seleksi — "
+            "diskusikan pilihan akhir bersama guru BK dan orang tua.")
+
+
+with tab_batas:
+    st.markdown("Setiap PTN punya **batas jumlah siswa** sekolah kita yang boleh memilihnya, supaya pilihan tidak menumpuk di satu tempat. "
+                "Cek **Sisa** sebelum menentukan pilihan. Jika sebuah PTN melebihi batas, siswa dengan peluang paling kecil di PTN itu "
+                "akan diminta mengganti pilihan.")
+    _pil_all = aman_baca(storage.baca, {})
+    _tb = m.tabel_massal(R, _pil_all, CUT_A, CUT_K)
+    _, _per_ptn, _ = m.analisis_batas(_tb, R.batas) if R.batas else ({}, pd.DataFrame(columns=m.KOLOM_PTN), None)
+    batas_ui.render_daftar_batas(R, _per_ptn, "portal")

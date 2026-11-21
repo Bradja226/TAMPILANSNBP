@@ -44,7 +44,7 @@ def tombol_unduh(df, nama, sheet="Data", fmt=None):
 
 st.title("👁️ Pemetaan SNBP 2027")
 st.caption("Tampilan saja — data tidak dapat diubah dari halaman ini.")
-tab_mas, tab_prodi, tab_ptn = st.tabs(["👥 Pemetaan Massal", "📚 Data Prodi", "🏛️ Data PTN"])
+tab_mas, tab_batas, tab_prodi, tab_ptn = st.tabs(["👥 Pemetaan Massal", "🚦 Batas PTN", "📚 Data Prodi", "🏛️ Data PTN"])
 
 
 @st.fragment(run_every=REFRESH_DETIK)
@@ -128,6 +128,21 @@ def tampil_massal():
 
 with tab_mas:
     tampil_massal()
+
+
+@st.fragment(run_every=REFRESH_DETIK)
+def tampil_batas():
+    tb = m.tabel_massal(R, baca_pilihan(), CUT_A, CUT_K)
+    _, per_ptn_b, _ = m.analisis_batas(tb, R.batas) if R.batas else ({}, pd.DataFrame(columns=m.KOLOM_PTN), None)
+    st.markdown("Daftar **batas maksimal pendaftar** untuk seluruh PTN — tampil walau belum ada siswa yang memilih. "
+                f"Kolom Terdaftar/Sisa diperbarui otomatis tiap {REFRESH_DETIK} detik.")
+    d_b = batas_ui.render_daftar_batas(R, per_ptn_b, "v")
+    if d_b is not None and len(d_b):
+        tombol_unduh(d_b, "batas_pendaftar_per_ptn.xlsx", "Batas PTN", batas_ui.FMT_BATAS)
+
+
+with tab_batas:
+    tampil_batas()
 
 with tab_prodi:
     st.markdown(f"**{len(R.prodi):,}** program studi di **{len(R.ptn)}** PTN.".replace(",", "."))

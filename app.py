@@ -86,8 +86,8 @@ with st.sidebar:
         st.caption("Di Streamlit Cloud, mode ini bisa hilang saat server restart. Aktifkan Google Sheets.")
 
 st.title("Rasionalisasi SNBP 2027")
-tab_kalk, tab_rek, tab_mas, tab_model, tab_ref = st.tabs(
-    ["🎯 Kalkulator Siswa", "🔍 Rekomendasi Prodi", "👥 Pemetaan Massal", "📈 Model & Validasi", "📚 Database PTN & Prodi"]
+tab_kalk, tab_rek, tab_mas, tab_batas, tab_model, tab_ref = st.tabs(
+    ["🎯 Kalkulator Siswa", "🔍 Rekomendasi Prodi", "👥 Pemetaan Massal", "🚦 Batas PTN", "📈 Model & Validasi", "📚 Database PTN & Prodi"]
 )
 
 
@@ -485,6 +485,15 @@ with tab_mas:
             (f"Kelas {k}", tdf[tdf["Kelas"] == k].reset_index(drop=True), {}, link_cols) for k in sorted(tdf["Kelas"].unique())]
         tombol_xlsx_multi("⬇️ Unduh daftar tautan (Excel: 1 lembar semua + 1 lembar per kelas)", lembar,
                           "tautan_portal_siswa.xlsx", key="x_tautan")
+
+
+# ================================================================== TAB — BATAS PTN
+with tab_batas:
+    st.markdown("Daftar **batas maksimal pendaftar** untuk seluruh PTN — tampil walau belum ada siswa yang memilih.")
+    daftar_batas = batas_ui.render_daftar_batas(R, per_ptn, "app")
+    if daftar_batas is not None and len(daftar_batas):
+        tombol_xlsx("⬇️ Unduh daftar batas (Excel)", daftar_batas, "batas_pendaftar_per_ptn.xlsx", "Batas PTN",
+                    batas_ui.FMT_BATAS, key="x_batas")
 
 
 # ================================================================== TAB 4 — MODEL & VALIDASI
