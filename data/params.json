@@ -7,6 +7,8 @@
   "keketatan_prodi": 0.031406,
   "keketatan_kampus": 0.020495,
   "pilihan_2": -0.935881,
-  "cut_aman": 0.15,
-  "cut_kompetitif": 0.1122
+  "cut_aman": 0.3,
+  "cut_kompetitif": 0.05,
+  "cut_aman_excel": 0.15,
+  "cut_kompetitif_excel": 0.1122
 }
