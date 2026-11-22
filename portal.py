@@ -11,8 +11,9 @@ from exportxl import tombol_xlsx
 
 st.set_page_config(page_title="Rekomendasi Prodi SNBP", page_icon="🎓", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("<style>.block-container{padding-top:2rem;max-width:1200px;}</style>", unsafe_allow_html=True)
-IKON = {"AMAN": "🟢", "KOMPETITIF": "🟡", "BERISIKO": "🔴", "": ""}
-ARTI = {"AMAN": "peluang tinggi", "KOMPETITIF": "peluang terbuka, perlu pengaman", "BERISIKO": "peluang kecil"}
+IKON = {m.Z_BAIK: "🟢", m.Z_KOMP: "🟡", m.Z_RISIKO: "🔴", "": ""}
+ARTI = {m.Z_BAIK: "peluang terbaik (± separuh lolos pada data 2026)", m.Z_KOMP: "peluang terbuka (± 9% lolos), sebaiknya dipasangkan dengan pilihan peluang baik",
+        m.Z_RISIKO: "peluang sangat kecil (± 2% lolos)"}
 
 
 @st.cache_resource(show_spinner="Memuat data…")
@@ -79,7 +80,7 @@ with tab_rekom:
         d = m.saring_rek(d, rec["sumber"], rec["status_filter"], _lst(rec["jenjang"]), _lst(rec["provinsi"]),
                          _lst(rec["ptn"]), rec["cari"]).head(rec["batas"])
         st.caption(f"Mapel pendukung: **{', '.join(acuan) or '-'}** · nilai pendukung {rec['nilai']:.1f} · "
-                   f"diurutkan menurut peluang sebagai **{rec['sumber']}** · filter: {rec['status_filter']}")
+                   f"diurutkan menurut peluang sebagai **{rec['sumber']}** · filter: {m.nama_filter(rec['status_filter'])}")
         if rec["catatan"]:
             st.info(rec["catatan"])
         cari = st.text_input("Cari prodi / PTN di daftar ini", key=f"cari_{rec['id']}", placeholder="mis. teknik, IPB")
@@ -110,8 +111,9 @@ with tab_rekom:
         st.markdown(
             "- **Peluang P1** = perkiraan peluang lolos jika prodi itu kamu pilih sebagai **Pilihan 1**; **P2** jika sebagai **Pilihan 2** "
             "(Pilihan 2 punya peluang lebih rendah).\n"
-            f"- 🟢 **AMAN** (≥ {CUT_A * 100:.0f}%): {ARTI['AMAN']} · 🟡 **KOMPETITIF** (≥ {CUT_K * 100:.1f}%): {ARTI['KOMPETITIF']} · "
-            f"🔴 **BERISIKO**: {ARTI['BERISIKO']}.\n"
+            f"- 🟢 **{m.Z_BAIK}** (≥ {CUT_A * 100:.0f}%): {ARTI[m.Z_BAIK]}.\n"
+            f"- 🟡 **{m.Z_KOMP}** (≥ {CUT_K * 100:.0f}%): {ARTI[m.Z_KOMP]}.\n"
+            f"- 🔴 **{m.Z_RISIKO}** (< {CUT_K * 100:.0f}%): {ARTI[m.Z_RISIKO]}.\n"
             "- Angka ini **perkiraan** dari model yang dilatih pada data pemetaan SNBP 2026 SMAN 1 Ciampea. Ini bukan jaminan hasil seleksi — "
             "diskusikan pilihan akhir bersama guru BK dan orang tua.")
 

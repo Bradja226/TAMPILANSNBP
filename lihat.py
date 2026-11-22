@@ -15,7 +15,7 @@ ALLOW_DOWNLOAD = False   # ubah ke True jika pengguna tampilan boleh mengunduh d
 REFRESH_DETIK = 30
 
 st.set_page_config(page_title="Pemetaan SNBP 2027 (Tampilan)", page_icon="👁️", layout="wide")
-IKON = {"AMAN": "🟢", "KOMPETITIF": "🟡", "BERISIKO": "🔴", "": ""}
+IKON = {m.Z_BAIK: "🟢", m.Z_KOMP: "🟡", m.Z_RISIKO: "🔴", "": ""}
 st.markdown("<style>.block-container{padding-top:2rem;}</style>", unsafe_allow_html=True)
 
 
@@ -69,7 +69,7 @@ def tampil_massal():
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Total siswa", len(tb))
     k2.metric("Sudah dipetakan", len(ok), f"{len(ok) / len(tb) * 100:.0f}%", delta_color="off")
-    k3.metric("🟢 Pilihan 1 AMAN", int((tb["Status P1"] == "AMAN").sum()))
+    k3.metric("🟢 Pilihan 1 peluang baik", int((tb["Status P1"] == m.Z_BAIK).sum()))
     k4.metric("🔴 Perlu evaluasi ulang", int((tb["Saran Strategi"] == "Evaluasi Ulang Kedua Pilihan").sum()))
 
     if len(ok):
@@ -78,7 +78,7 @@ def tampil_massal():
         sc.columns = ["Strategi", "Jumlah"]
         g1.plotly_chart(px.bar(sc, x="Jumlah", y="Strategi", orientation="h", title="Saran strategi kombinasi",
                                color="Strategi", color_discrete_map={
-                                   "Kombinasi Ideal (Ada Opsi Aman)": "#16a34a", "Perlu Pengaman di Pilihan 2": "#f59e0b",
+                                   "Kombinasi Ideal (Ada Opsi Peluang Baik)": "#16a34a", "Perlu Pengaman di Pilihan 2": "#f59e0b",
                                    "Evaluasi Ulang Kedua Pilihan": "#dc2626", "Isi Pilihan 2 sebagai pengaman": "#64748b"})
                         .update_layout(showlegend=False, height=300, yaxis_title=None), key="v_strat")
         top = ok["PTN Pilihan 1"].value_counts().head(10).reset_index()

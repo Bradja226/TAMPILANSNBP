@@ -44,9 +44,23 @@ def prob(z):
     return 1.0 / (1.0 + np.exp(-np.clip(z, -700, 700)))
 
 
-def status(pr, cut_aman, cut_kompetitif):
+# --- Zona peluang (hasil evaluasi data 2026: ambang 30% dan 5%; tiap zona ~5x lebih baik dari zona di bawahnya)
+Z_BAIK, Z_KOMP, Z_RISIKO = "PELUANG BAIK", "KOMPETITIF", "SANGAT BERISIKO"
+ZONA = (Z_BAIK, Z_KOMP, Z_RISIKO)
+INFO_ZONA = {Z_BAIK: "Pada data 2026, sekitar separuh pilihan di zona ini lolos (5 dari 9) — tetap bukan jaminan.",
+             Z_KOMP: "Pada data 2026, sekitar 9% pilihan di zona ini lolos (3 dari 34).",
+             Z_RISIKO: "Pada data 2026, sekitar 2% pilihan di zona ini lolos (3 dari 155)."}
+FILTER_BAIK, FILTER_BAIK_KOMP, FILTER_SEMUA = "Peluang baik saja", "Peluang baik + Kompetitif", "Semua"
+FILTER_LAMA = {"AMAN saja": FILTER_BAIK, "AMAN + KOMPETITIF": FILTER_BAIK_KOMP}     # daftar lama yang sudah tersimpan
+
+
+def nama_filter(f):
+    return FILTER_LAMA.get(f, f)
+
+
+def status(pr, cut_baik, cut_kompetitif):
     pr = np.asarray(pr, dtype=float)
-    return np.where(pr >= cut_aman, "AMAN", np.where(pr >= cut_kompetitif, "KOMPETITIF", "BERISIKO"))
+    return np.where(pr >= cut_baik, Z_BAIK, np.where(pr >= cut_kompetitif, Z_KOMP, Z_RISIKO))
 
 
 def kontribusi(p, nilai, pend, alm_ptn, alm_jur, ket_prodi, ket_kampus, pilihan2, cap=False):
@@ -66,9 +80,9 @@ def strategi(st1, st2):
         return ""
     if not st2:
         return "Isi Pilihan 2 sebagai pengaman"
-    if "AMAN" in (st1, st2):
-        return "Kombinasi Ideal (Ada Opsi Aman)"
-    if "KOMPETITIF" in (st1, st2):
+    if Z_BAIK in (st1, st2):
+        return "Kombinasi Ideal (Ada Opsi Peluang Baik)"
+    if Z_KOMP in (st1, st2):
         return "Perlu Pengaman di Pilihan 2"
     return "Evaluasi Ulang Kedua Pilihan"
 
@@ -250,10 +264,11 @@ def saring_rek(d, sumber, status_filter, jenjang=(), provinsi=(), ptn=(), cari="
     """Terapkan filter tab Rekomendasi pada hasil `rekomendasi()` lalu urutkan dari peluang tertinggi."""
     kol_st = "status1" if sumber == "Pilihan 1" else "status2"
     kol_p = "p1" if sumber == "Pilihan 1" else "p2"
-    if status_filter == "AMAN saja":
-        d = d[d[kol_st] == "AMAN"]
-    elif status_filter == "AMAN + KOMPETITIF":
-        d = d[d[kol_st].isin(["AMAN", "KOMPETITIF"])]
+    status_filter = nama_filter(status_filter)
+    if status_filter == FILTER_BAIK:
+        d = d[d[kol_st] == Z_BAIK]
+    elif status_filter == FILTER_BAIK_KOMP:
+        d = d[d[kol_st].isin([Z_BAIK, Z_KOMP])]
     if jenjang:
         d = d[d["jenjang"].isin(list(jenjang))]
     if provinsi:

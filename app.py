@@ -16,12 +16,12 @@ from exportxl import FMT_MASSAL, tabel_prodi, tombol_xlsx, tombol_xlsx_multi
 
 st.set_page_config(page_title="Rasionalisasi SNBP 2027", page_icon="🎓", layout="wide")
 
-WARNA = {"AMAN": "#16a34a", "KOMPETITIF": "#f59e0b", "BERISIKO": "#dc2626"}
-IKON = {"AMAN": "🟢", "KOMPETITIF": "🟡", "BERISIKO": "🔴", "": ""}
+WARNA = {m.Z_BAIK: "#16a34a", m.Z_KOMP: "#f59e0b", m.Z_RISIKO: "#dc2626"}
+IKON = {m.Z_BAIK: "🟢", m.Z_KOMP: "🟡", m.Z_RISIKO: "🔴", "": ""}
 SARAN_ZONA = {
-    "AMAN": "Peluang tinggi. Layak dikunci sebagai target utama.",
-    "KOMPETITIF": "Peluang terbuka. Wajib di Pilihan 1, dan Pilihan 2 diisi zona AMAN.",
-    "BERISIKO": "Sebagian besar kandidat gagal. Pertimbangkan prodi pada tab Rekomendasi.",
+    m.Z_BAIK: "Peluang terbaik. Layak dikunci sebagai target utama.",
+    m.Z_KOMP: "Peluang terbuka, tetapi sebagian besar kandidat gagal. Pasangkan dengan pilihan zona Peluang baik.",
+    m.Z_RISIKO: "Peluang sangat kecil. Pertimbangkan prodi lain pada tab Rekomendasi.",
 }
 
 st.markdown(
@@ -74,12 +74,13 @@ with st.sidebar:
     SIS = R.siswa[R.siswa["no"] == no].iloc[0]
 
     with st.expander("⚙️ Ambang batas zona"):
-        cut_a = st.number_input("AMAN ≥ (%)", 0.0, 100.0, float(R.params["cut_aman"] * 100), 0.1) / 100
-        cut_k = st.number_input("KOMPETITIF ≥ (%)", 0.0, 100.0, float(R.params["cut_kompetitif"] * 100), 0.1) / 100
+        cut_a = st.number_input("Peluang baik ≥ (%)", 0.0, 100.0, float(R.params["cut_aman"] * 100), 0.5) / 100
+        cut_k = st.number_input("Kompetitif ≥ (%)", 0.0, 100.0, float(R.params["cut_kompetitif"] * 100), 0.5) / 100
         if cut_k > cut_a:
-            st.error("Batas KOMPETITIF tidak boleh lebih besar dari AMAN.")
+            st.error("Batas Kompetitif tidak boleh lebih besar dari Peluang baik.")
             cut_k = cut_a
-        st.caption("Default = nilai di sheet Parameter_Model. Di bawah KOMPETITIF = BERISIKO.")
+        st.caption("Bawaan: 30% dan 5% (hasil evaluasi data 2026). Di bawah batas Kompetitif = Sangat berisiko. "
+                   "Perubahan di sini hanya berlaku selama sesi.")
     st.divider()
     (st.caption if STATUS_SIMPAN[0] else st.error)(STATUS_SIMPAN[1])
     if STATUS_SIMPAN[0] and "File lokal" in STATUS_SIMPAN[1]:
@@ -141,6 +142,7 @@ def kartu_hasil(res, judul):
     gx.plotly_chart(gauge(res["p"], res["status"], judul), key=f"g_{judul}_{no}")
     ix.markdown(f"#### {badge(res['status'])}", unsafe_allow_html=True)
     ix.caption(SARAN_ZONA[res["status"]])
+    ix.caption(m.INFO_ZONA[res["status"]])
     row = res["row"]
     ix.metric("Daya tampung 2026", f"{int(row['dt_2026']):,}".replace(",", "."))
     c1, c2, c3 = st.columns(3)
@@ -187,7 +189,7 @@ with tab_kalk:
             st.markdown("### Evaluasi kombinasi")
             g1, g2 = st.columns([1, 2])
             g1.metric("Peluang minimal 1 lolos", pct(gab))
-            kotak = {"Kombinasi Ideal (Ada Opsi Aman)": st.success, "Perlu Pengaman di Pilihan 2": st.warning,
+            kotak = {"Kombinasi Ideal (Ada Opsi Peluang Baik)": st.success, "Perlu Pengaman di Pilihan 2": st.warning,
                      "Evaluasi Ulang Kedua Pilihan": st.error}.get(saran, st.info)
             with g2:
                 kotak(f"**{saran}**")
@@ -235,7 +237,7 @@ with tab_rek:
     nilai_rek = c2.number_input("Rata-rata nilai mapel pendukung", 0.0, 100.0,
                                 float(res_src["nilai"]) if res_src else float(SIS["rata_rata"]), 0.5,
                                 key=f"nilrek_{kunci}")
-    status_filter = c2.radio("Filter status", ["AMAN saja", "AMAN + KOMPETITIF", "Semua"], horizontal=True)
+    status_filter = c2.radio("Filter status", [m.FILTER_BAIK, m.FILTER_BAIK_KOMP, m.FILTER_SEMUA], horizontal=True)
 
     if not acuan:
         st.info("Pilih minimal satu mata pelajaran acuan (atau pilih prodi di tab Kalkulator).")
@@ -248,7 +250,7 @@ with tab_rek:
         kol_p = "p1" if sumber == "Pilihan 1" else "p2"
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("Prodi linier ditemukan", f"{len(dr):,}".replace(",", "."))
-        for kc, s in zip((k2, k3, k4), ("AMAN", "KOMPETITIF", "BERISIKO")):
+        for kc, s in zip((k2, k3, k4), m.ZONA):
             kc.metric(f"{IKON[s]} {s}", int((dr[kol_st] == s).sum()))
         if sembunyi and n_an:
             st.caption(f"{n_an} prodi disembunyikan karena keketatan > 100%.")
@@ -259,10 +261,10 @@ with tab_rek:
         ptn_f = f3.multiselect("PTN", sorted(dr["ptn"].unique()))
         cari = f4.text_input("Cari nama prodi", placeholder="mis. teknik, pendidikan")
 
-        if status_filter == "AMAN saja":
-            dr = dr[dr[kol_st] == "AMAN"]
-        elif status_filter == "AMAN + KOMPETITIF":
-            dr = dr[dr[kol_st].isin(["AMAN", "KOMPETITIF"])]
+        if status_filter == m.FILTER_BAIK:
+            dr = dr[dr[kol_st] == m.Z_BAIK]
+        elif status_filter == m.FILTER_BAIK_KOMP:
+            dr = dr[dr[kol_st].isin([m.Z_BAIK, m.Z_KOMP])]
         if jenjang:
             dr = dr[dr["jenjang"].isin(jenjang)]
         if prov:
@@ -359,7 +361,7 @@ with tab_mas:
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Total siswa", len(tb))
     k2.metric("Sudah dipetakan", len(terpetakan), f"{len(terpetakan) / len(tb) * 100:.0f}%", delta_color="off")
-    k3.metric("🟢 Pilihan 1 AMAN", int((tb["Status P1"] == "AMAN").sum()))
+    k3.metric("🟢 Pilihan 1 peluang baik", int((tb["Status P1"] == m.Z_BAIK).sum()))
     k4.metric("🔴 Perlu evaluasi ulang", int((tb["Saran Strategi"] == "Evaluasi Ulang Kedua Pilihan").sum()))
 
     if len(terpetakan):
@@ -368,12 +370,12 @@ with tab_mas:
         sc.columns = ["Strategi", "Jumlah"]
         g1.plotly_chart(px.bar(sc, x="Jumlah", y="Strategi", orientation="h", title="Saran strategi kombinasi",
                                color="Strategi", color_discrete_map={
-                                   "Kombinasi Ideal (Ada Opsi Aman)": "#16a34a", "Perlu Pengaman di Pilihan 2": "#f59e0b",
+                                   "Kombinasi Ideal (Ada Opsi Peluang Baik)": "#16a34a", "Perlu Pengaman di Pilihan 2": "#f59e0b",
                                    "Evaluasi Ulang Kedua Pilihan": "#dc2626", "Isi Pilihan 2 sebagai pengaman": "#64748b"})
                         .update_layout(showlegend=False, height=300, yaxis_title=None), key="g_strat")
         st_df = pd.concat([terpetakan["Status P1"].value_counts().rename("Pilihan 1"),
                            terpetakan["Status P2"].replace("", np.nan).value_counts().rename("Pilihan 2")], axis=1
-                          ).reindex(["AMAN", "KOMPETITIF", "BERISIKO"]).fillna(0).reset_index(names="Status")
+                          ).reindex(list(m.ZONA)).fillna(0).reset_index(names="Status")
         fig = go.Figure([go.Bar(name=c, x=st_df["Status"], y=st_df[c]) for c in ("Pilihan 1", "Pilihan 2")])
         fig.update_layout(barmode="group", title="Sebaran status", height=300)
         g2.plotly_chart(fig, key="g_status")
@@ -510,9 +512,9 @@ with tab_model:
     c1.dataframe(tp, hide_index=True, column_config={"Beta": st.column_config.NumberColumn(format="%.6f"),
                                                       "Odds ratio": st.column_config.NumberColumn(format="%.4f")})
     c2.markdown("**Ambang zona (dipakai sekarang)**")
-    c2.markdown(f"- {IKON['AMAN']} AMAN ≥ **{cut_a * 100:.2f}%**\n"
-                f"- {IKON['KOMPETITIF']} KOMPETITIF ≥ **{cut_k * 100:.2f}%**\n"
-                f"- {IKON['BERISIKO']} BERISIKO < {cut_k * 100:.2f}%")
+    c2.markdown(f"- {IKON[m.Z_BAIK]} {m.Z_BAIK} ≥ **{cut_a * 100:.1f}%**\n"
+                f"- {IKON[m.Z_KOMP]} {m.Z_KOMP} ≥ **{cut_k * 100:.1f}%**\n"
+                f"- {IKON[m.Z_RISIKO]} {m.Z_RISIKO} < {cut_k * 100:.1f}%")
 
     H = R.hist.copy()
     z = m.logit(P, H["nilai"], H["pendukung"], H["alumni_ptn"], H["alumni_jur"], H["keketatan_prodi"],
@@ -527,7 +529,7 @@ with tab_model:
     v3.metric("ROC-AUC (dihitung ulang)", f"{m.auc(y, H['peluang']):.4f}")
     v4.metric("Brier score", f"{np.mean((H['peluang'] - y) ** 2):.4f}")
     g1, g2 = st.columns(2)
-    ct = pd.crosstab(H["zona"], H["aktual"]).reindex(["AMAN", "KOMPETITIF", "BERISIKO"]).fillna(0).astype(int)
+    ct = pd.crosstab(H["zona"], H["aktual"]).reindex(list(m.ZONA)).fillna(0).astype(int)
     g1.markdown("**Zona model vs hasil aktual**")
     g1.dataframe(ct)
     H["Hasil aktual"] = H["aktual"].map({"YA": "Lolos", "TIDAK": "Tidak lolos"})
