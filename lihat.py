@@ -7,8 +7,8 @@ import plotly.express as px
 import streamlit as st
 
 import model as m
-import aktivitas_ui
 import batas_ui
+import riwayat as ri
 import storage
 from exportxl import FMT_MASSAL, tombol_xlsx
 
@@ -45,7 +45,8 @@ def tombol_unduh(df, nama, sheet="Data", fmt=None):
 
 st.title("👁️ Pemetaan SNBP 2027")
 st.caption("Tampilan saja — data tidak dapat diubah dari halaman ini.")
-tab_mas, tab_akt, tab_batas, tab_prodi, tab_ptn = st.tabs(["👥 Pemetaan Massal", "🕒 Aktivitas Terbaru", "🚦 Batas PTN", "📚 Data Prodi", "🏛️ Data PTN"])
+tab_mas, tab_riw, tab_batas, tab_prodi, tab_ptn = st.tabs(
+    ["👥 Pemetaan Massal", "🕘 Update Perubahan", "🚦 Batas PTN", "📚 Data Prodi", "🏛️ Data PTN"])
 
 
 @st.fragment(run_every=REFRESH_DETIK)
@@ -132,6 +133,93 @@ with tab_mas:
 
 
 @st.fragment(run_every=REFRESH_DETIK)
+def tampil_riwayat():
+    try:
+        log = storage.baca_riwayat()
+    except Exception as e:  # noqa: BLE001
+        st.error(f"⚠️ Gagal membaca riwayat: {e}")
+        return
+    sumber = storage.nama_mode()
+    if "File lokal" in sumber:
+        st.warning("⚠️ Dashboard ini BELUM terhubung ke Google Sheets, jadi riwayat dari aplikasi Edit tidak terbaca. "
+                   "Tempel `sheet_id` dan `gcp_json` yang sama di Secrets aplikasi ini.")
+    st.caption(f"Sumber data: {sumber} · diperbarui otomatis tiap {REFRESH_DETIK} detik · "
+               f"terakhir dibaca {pd.Timestamp.now():%H:%M:%S}")
+    if st.button("🔄 Muat ulang sekarang", key="riw_reload"):
+        st.rerun()
+    if not log:
+        st.info("Belum ada perubahan tercatat. Setiap kali pilihan PTN/prodi siswa disimpan, diganti, atau dihapus di "
+                "aplikasi Edit, catatannya muncul di sini.")
+        return
+
+    info = R.siswa.set_index("no")
+    df = pd.DataFrame(log)
+    df["Siswa"] = [info.loc[n, "nama"].title() if n in info.index else f"No {n}" for n in df["no"]]
+    df["Kelas"] = [info.loc[n, "kelas"] if n in info.index else "" for n in df["no"]]
+    df["Perubahan"] = [ri.kalimat(r, s, tebal=False) for r, s in zip(log, df["Siswa"])]
+
+    now = ri.sekarang()
+    t_all = pd.to_datetime(df["waktu"])
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Perubahan tercatat", len(df))
+    k2.metric("24 jam terakhir", int((t_all >= now - pd.Timedelta(hours=24)).sum()))
+    k3.metric("Siswa yang mengubah", df["no"].nunique())
+
+    f1, f2, f3 = st.columns(3)
+    kelas_f = f1.multiselect("Kelas", sorted(df["Kelas"].unique()), key="riw_kelas")
+    aksi_f = f2.multiselect("Jenis perubahan", ["memilih", "mengganti", "menghapus"], key="riw_aksi")
+    cari = f3.text_input("Cari siswa / PTN / prodi", key="riw_cari")
+    v = df
+    if kelas_f:
+        v = v[v["Kelas"].isin(kelas_f)]
+    if aksi_f:
+        v = v[v["aksi"].isin(aksi_f)]
+    if cari:
+        mask = pd.Series(False, index=v.index)
+        for c in ("Siswa", "ptn_baru", "prodi_baru", "ptn_lama", "prodi_lama"):
+            mask |= v[c].astype(str).str.contains(cari, case=False, na=False, regex=False)
+        v = v[mask]
+    if v.empty:
+        st.info("Tidak ada perubahan yang cocok dengan filter.")
+        return
+
+    st.markdown("#### Terbaru")
+    with st.container(height=360):
+        for r, ket in zip(v.head(40).to_dict("records"), v.head(40)["Siswa"]):
+            tanda = " 🆕" if ri.baru(r["waktu"], now=now) else ""
+            st.markdown(f"{ri.IKON[r['aksi']]} {ri.kalimat(r, ket)}  \n"
+                        f":gray[{ri.waktu_pendek(r['waktu'])} · {ri.lalu(r['waktu'], now)}]{tanda}")
+
+    # tabel lengkap + peluang pilihan baru (dihitung dengan model saat ini)
+    sis = R.siswa.set_index("no")
+    pel, stt = [], []
+    for r in v.to_dict("records"):
+        hasil = None
+        if r["aksi"] != "menghapus" and r["no"] in sis.index:
+            hasil = m.evaluasi(R, sis.loc[r["no"]], r["ptn_baru"], r["prodi_baru"], r["nilai_baru"],
+                               1 if r["pilihan"] == 2 else 0, CUT_A, CUT_K)
+        pel.append(hasil["p"] * 100 if hasil else np.nan)
+        stt.append(f"{IKON[hasil['status']]} {hasil['status']}" if hasil else "")
+    tabel = pd.DataFrame({
+        "Waktu": [ri.waktu_pendek(w) for w in v["waktu"]], "Siswa": v["Siswa"].values, "Kelas": v["Kelas"].values,
+        "Perubahan": [{"memilih": "Memilih", "mengganti": "Mengganti", "menghapus": "Menghapus"}[a] for a in v["aksi"]],
+        "Pilihan": v["pilihan"].values, "PTN baru": v["ptn_baru"].values, "Prodi baru": v["prodi_baru"].values,
+        "PTN lama": v["ptn_lama"].values, "Prodi lama": v["prodi_lama"].values,
+        "Peluang (%)": pel, "Status": stt})
+    with st.expander(f"📋 Tabel lengkap ({len(tabel)} catatan)"):
+        st.dataframe(tabel, hide_index=True, height=420, column_config={
+            "Peluang (%)": st.column_config.NumberColumn(format="%.1f"),
+            "PTN baru": st.column_config.TextColumn(width="large"), "Prodi baru": st.column_config.TextColumn(width="large"),
+            "PTN lama": st.column_config.TextColumn(width="large"), "Prodi lama": st.column_config.TextColumn(width="large"),
+            "Perubahan": st.column_config.TextColumn(width="small")})
+        tombol_unduh(tabel, "riwayat_perubahan.xlsx", "Riwayat", {"Peluang (%)": "0.0"})
+
+
+with tab_riw:
+    tampil_riwayat()
+
+
+@st.fragment(run_every=REFRESH_DETIK)
 def tampil_batas():
     tb = m.tabel_massal(R, baca_pilihan(), CUT_A, CUT_K)
     _, per_ptn_b, _ = m.analisis_batas(tb, R.batas) if R.batas else ({}, pd.DataFrame(columns=m.KOLOM_PTN), None)
@@ -144,17 +232,6 @@ def tampil_batas():
 
 with tab_batas:
     tampil_batas()
-
-
-@st.fragment(run_every=REFRESH_DETIK)
-def tampil_aktivitas():
-    st.markdown("Riwayat perubahan terbaru dari aplikasi Edit — misalnya siapa memilih atau mengganti pilihan. "
-                f"Diperbarui otomatis tiap {REFRESH_DETIK} detik.")
-    aktivitas_ui.render_aktivitas(R, "v")
-
-
-with tab_akt:
-    tampil_aktivitas()
 
 with tab_prodi:
     st.markdown(f"**{len(R.prodi):,}** program studi di **{len(R.ptn)}** PTN.".replace(",", "."))

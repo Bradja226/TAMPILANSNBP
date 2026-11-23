@@ -6,6 +6,7 @@ Yang disimpan hanya nomor urut siswa + pilihan PTN/prodi + nilai (tanpa nama/NIS
 """
 import json
 import traceback
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -175,6 +176,7 @@ def perbarui(perubahan):
     """perubahan = {no: {rec} | None(=hapus)}. Selalu membaca data TERBARU dulu lalu menggabungkan,
     sehingga edit orang lain tidak tertimpa. Mengembalikan seluruh data terbaru."""
     data = _baca_mentah()
+    lama = dict(data)                         # rekaman diganti (bukan diubah di tempat), jadi salinan dangkal cukup
     for no, rec in perubahan.items():
         if rec is None:
             data.pop(int(no), None)
@@ -182,6 +184,10 @@ def perbarui(perubahan):
             data[int(no)] = {k: rec.get(k) for k in HEADER[1:]}
     _tulis(data)
     baca.clear()
+    try:                                      # riwayat bersifat tambahan: gagal mencatat TIDAK boleh membatalkan simpan
+        catat_riwayat(lama, data, [int(n) for n in perubahan])
+    except Exception:  # noqa: BLE001
+        pass
     return data
 
 
@@ -404,3 +410,114 @@ def perbarui_ket(perubahan):
     _tulis_ket(data)
     baca_ket.clear()
     return data
+
+
+# =====================================================================
+#  Riwayat perubahan pilihan siswa ("A memilih prodi X di kampus B") - ditampilkan di dashboard Tampilan
+#  Dicatat otomatis oleh perbarui() dengan membandingkan data lama vs baru. Hanya ditambah, tidak pernah ditimpa.
+# =====================================================================
+RIW_SHEET = "Riwayat"
+RIW_COLS = ["waktu", "no", "aksi", "pilihan", "ptn_baru", "prodi_baru", "nilai_baru", "ptn_lama", "prodi_lama"]
+RIW_CSV = m.DATA / "riwayat_pilihan.csv"
+RIW_MAKS = 1000                               # jumlah catatan terbaru yang dibaca
+WIB = timezone(timedelta(hours=7))
+
+
+def hitung_peristiwa(lama, baru, daftar_no, waktu):
+    """Bandingkan pilihan lama vs baru untuk siswa di `daftar_no`. Hanya perubahan PTN/prodi yang dicatat
+    (mengubah nilai pendukung saja tidak dihitung). aksi: memilih | mengganti | menghapus."""
+    out = []
+    for no in daftar_no:
+        a, b = lama.get(no) or {}, baru.get(no) or {}
+        for k in ("1", "2"):
+            pl = (_s(a.get(f"ptn{k}")), _s(a.get(f"prodi{k}")))
+            pb = (_s(b.get(f"ptn{k}")), _s(b.get(f"prodi{k}")))
+            ada_l, ada_b = bool(pl[0] and pl[1]), bool(pb[0] and pb[1])
+            if (not ada_l and not ada_b) or (ada_l and ada_b and pl == pb):
+                continue
+            out.append({"waktu": waktu, "no": int(no), "pilihan": int(k),
+                        "aksi": "memilih" if not ada_l else ("menghapus" if not ada_b else "mengganti"),
+                        "ptn_baru": pb[0] if ada_b else "", "prodi_baru": pb[1] if ada_b else "",
+                        "nilai_baru": _f(b.get(f"nilai{k}"), "") if ada_b else "",
+                        "ptn_lama": pl[0] if ada_l else "", "prodi_lama": pl[1] if ada_l else ""})
+    return out
+
+
+@st.cache_resource(show_spinner=False)
+def _worksheet_riw(sid, info_str):
+    import gspread
+    gc = gspread.service_account_from_dict(json.loads(info_str), scopes=SCOPES)
+    sh = gc.open_by_key(sid)
+    try:
+        ws = sh.worksheet(RIW_SHEET)
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title=RIW_SHEET, rows=2000, cols=len(RIW_COLS))
+    if ws.row_values(1) != RIW_COLS:
+        ws.update(range_name="A1", values=[RIW_COLS])
+    return ws
+
+
+def catat_riwayat(lama, baru, daftar_no):
+    """Tambahkan catatan perubahan ke Riwayat (Google Sheets atau CSV lokal). Mengembalikan jumlah catatan."""
+    waktu = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S")
+    ev = hitung_peristiwa(lama, baru, daftar_no, waktu)
+    if not ev:
+        return 0
+    baris = [[_py(e.get(k)) for k in RIW_COLS] for e in ev]
+    cfg = _secrets()
+    if cfg:
+        try:
+            _worksheet_riw(*cfg).append_rows(baris, value_input_option="RAW")
+        except PenyimpananError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise _terjemah(e)
+    else:
+        try:
+            ada = pd.read_csv(RIW_CSV, keep_default_na=False) if RIW_CSV.exists() else pd.DataFrame(columns=RIW_COLS)
+            pd.concat([ada, pd.DataFrame(baris, columns=RIW_COLS)], ignore_index=True).to_csv(RIW_CSV, index=False)
+        except OSError:
+            raise PenyimpananError("Tidak bisa menulis riwayat (server read-only).")
+    baca_riwayat.clear()
+    return len(ev)
+
+
+def _rapikan_riw(rows):
+    out = []
+    for r in rows:
+        try:
+            no, pil = int(r["no"]), int(r["pilihan"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        w = _s(r.get("waktu"))
+        aksi = _s(r.get("aksi"))
+        if not w or aksi not in ("memilih", "mengganti", "menghapus"):
+            continue
+        nb = r.get("nilai_baru")
+        out.append({"waktu": w, "no": no, "aksi": aksi, "pilihan": pil, "ptn_baru": _s(r.get("ptn_baru")),
+                    "prodi_baru": _s(r.get("prodi_baru")),
+                    "nilai_baru": None if _s(nb) == "" else _f(nb, None),
+                    "ptn_lama": _s(r.get("ptn_lama")), "prodi_lama": _s(r.get("prodi_lama"))})
+    out.reverse()                                          # baris terakhir ditulis = paling baru
+    out.sort(key=lambda x: x["waktu"], reverse=True)       # urut stabil: terbaru di atas
+    return out[:RIW_MAKS]
+
+
+@st.cache_data(ttl=15, show_spinner=False)
+def baca_riwayat():
+    """Catatan perubahan pilihan, terbaru di atas (cache 15 detik)."""
+    cfg = _secrets()
+    if cfg:
+        try:
+            rows = _worksheet_riw(*cfg).get_all_records(value_render_option="UNFORMATTED_VALUE")
+        except PenyimpananError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise _terjemah(e)
+        return _rapikan_riw(rows)
+    if RIW_CSV.exists():
+        try:
+            return _rapikan_riw(pd.read_csv(RIW_CSV, keep_default_na=False).to_dict("records"))
+        except Exception:  # noqa: BLE001
+            return []
+    return []
