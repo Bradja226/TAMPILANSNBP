@@ -7,6 +7,7 @@ import plotly.express as px
 import streamlit as st
 
 import model as m
+import aktivitas_ui
 import batas_ui
 import storage
 from exportxl import FMT_MASSAL, tombol_xlsx
@@ -44,7 +45,7 @@ def tombol_unduh(df, nama, sheet="Data", fmt=None):
 
 st.title("👁️ Pemetaan SNBP 2027")
 st.caption("Tampilan saja — data tidak dapat diubah dari halaman ini.")
-tab_mas, tab_batas, tab_prodi, tab_ptn = st.tabs(["👥 Pemetaan Massal", "🚦 Batas PTN", "📚 Data Prodi", "🏛️ Data PTN"])
+tab_mas, tab_akt, tab_batas, tab_prodi, tab_ptn = st.tabs(["👥 Pemetaan Massal", "🕒 Aktivitas Terbaru", "🚦 Batas PTN", "📚 Data Prodi", "🏛️ Data PTN"])
 
 
 @st.fragment(run_every=REFRESH_DETIK)
@@ -143,6 +144,17 @@ def tampil_batas():
 
 with tab_batas:
     tampil_batas()
+
+
+@st.fragment(run_every=REFRESH_DETIK)
+def tampil_aktivitas():
+    st.markdown("Riwayat perubahan terbaru dari aplikasi Edit — misalnya siapa memilih atau mengganti pilihan. "
+                f"Diperbarui otomatis tiap {REFRESH_DETIK} detik.")
+    aktivitas_ui.render_aktivitas(R, "v")
+
+
+with tab_akt:
+    tampil_aktivitas()
 
 with tab_prodi:
     st.markdown(f"**{len(R.prodi):,}** program studi di **{len(R.ptn)}** PTN.".replace(",", "."))
