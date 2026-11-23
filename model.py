@@ -44,12 +44,12 @@ def prob(z):
     return 1.0 / (1.0 + np.exp(-np.clip(z, -700, 700)))
 
 
-# --- Zona peluang (hasil evaluasi data 2026: ambang 30% dan 5%; tiap zona ~5x lebih baik dari zona di bawahnya)
+# --- Zona peluang (hasil evaluasi data 2026: ambang 25% dan 10%; tingkat lolos tiap zona ±42% / ±21% / ±2%)
 Z_BAIK, Z_KOMP, Z_RISIKO = "PELUANG BAIK", "KOMPETITIF", "SANGAT BERISIKO"
 ZONA = (Z_BAIK, Z_KOMP, Z_RISIKO)
-INFO_ZONA = {Z_BAIK: "Pada data 2026, sekitar separuh pilihan di zona ini lolos (5 dari 9) — tetap bukan jaminan.",
-             Z_KOMP: "Pada data 2026, sekitar 9% pilihan di zona ini lolos (3 dari 34).",
-             Z_RISIKO: "Pada data 2026, sekitar 2% pilihan di zona ini lolos (3 dari 155)."}
+INFO_ZONA = {Z_BAIK: "Pada data 2026, sekitar 4 dari 10 pilihan di zona ini lolos (5 dari 12) — tetap bukan jaminan.",
+             Z_KOMP: "Pada data 2026, sekitar 21% pilihan di zona ini lolos (3 dari 14).",
+             Z_RISIKO: "Pada data 2026, sekitar 2% pilihan di zona ini lolos (3 dari 172)."}
 FILTER_BAIK, FILTER_BAIK_KOMP, FILTER_SEMUA = "Peluang baik saja", "Peluang baik + Kompetitif", "Semua"
 FILTER_LAMA = {"AMAN saja": FILTER_BAIK, "AMAN + KOMPETITIF": FILTER_BAIK_KOMP}     # daftar lama yang sudah tersimpan
 

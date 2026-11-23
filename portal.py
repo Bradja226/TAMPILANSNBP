@@ -12,7 +12,7 @@ from exportxl import tombol_xlsx
 st.set_page_config(page_title="Rekomendasi Prodi SNBP", page_icon="🎓", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("<style>.block-container{padding-top:2rem;max-width:1200px;}</style>", unsafe_allow_html=True)
 IKON = {m.Z_BAIK: "🟢", m.Z_KOMP: "🟡", m.Z_RISIKO: "🔴", "": ""}
-ARTI = {m.Z_BAIK: "peluang terbaik (± separuh lolos pada data 2026)", m.Z_KOMP: "peluang terbuka (± 9% lolos), sebaiknya dipasangkan dengan pilihan peluang baik",
+ARTI = {m.Z_BAIK: "peluang terbaik (± 4 dari 10 lolos pada data 2026)", m.Z_KOMP: "peluang terbuka (± 21% lolos), sebaiknya dipasangkan dengan pilihan peluang baik",
         m.Z_RISIKO: "peluang sangat kecil (± 2% lolos)"}
 
 

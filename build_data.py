@@ -32,7 +32,7 @@ params = {
     "cut_aman": ws["C18"].value, "cut_kompetitif": ws["C19"].value,
 }
 # Ambang zona: ditetapkan dari evaluasi data 2026 (bukan dari sel C18/C19 Excel). Ubah di sini bila perlu.
-AMBANG_BAIK, AMBANG_KOMPETITIF = 0.30, 0.05
+AMBANG_BAIK, AMBANG_KOMPETITIF = 0.25, 0.10
 params["cut_aman_excel"], params["cut_kompetitif_excel"] = params["cut_aman"], params["cut_kompetitif"]
 params["cut_aman"], params["cut_kompetitif"] = AMBANG_BAIK, AMBANG_KOMPETITIF    # nama kunci lama dipertahankan
 (OUT / "params.json").write_text(json.dumps(params, indent=2))

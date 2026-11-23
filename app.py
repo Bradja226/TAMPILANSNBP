@@ -79,7 +79,7 @@ with st.sidebar:
         if cut_k > cut_a:
             st.error("Batas Kompetitif tidak boleh lebih besar dari Peluang baik.")
             cut_k = cut_a
-        st.caption("Bawaan: 30% dan 5% (hasil evaluasi data 2026). Di bawah batas Kompetitif = Sangat berisiko. "
+        st.caption("Bawaan: 25% dan 10% (hasil evaluasi data 2026). Di bawah batas Kompetitif = Sangat berisiko. "
                    "Perubahan di sini hanya berlaku selama sesi.")
     st.divider()
     (st.caption if STATUS_SIMPAN[0] else st.error)(STATUS_SIMPAN[1])
