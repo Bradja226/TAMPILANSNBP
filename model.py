@@ -44,12 +44,12 @@ def prob(z):
     return 1.0 / (1.0 + np.exp(-np.clip(z, -700, 700)))
 
 
-# --- Zona peluang (hasil evaluasi data 2026: ambang 30% dan 5%; tiap zona ~5x lebih baik dari zona di bawahnya)
+# --- Zona peluang (hasil evaluasi data 2026: ambang 25% dan 10%; tingkat lolos tiap zona ±42% / ±21% / ±2%)
 Z_BAIK, Z_KOMP, Z_RISIKO = "PELUANG BAIK", "KOMPETITIF", "SANGAT BERISIKO"
 ZONA = (Z_BAIK, Z_KOMP, Z_RISIKO)
-INFO_ZONA = {Z_BAIK: "Pada data 2026, sekitar separuh pilihan di zona ini lolos (5 dari 9) — tetap bukan jaminan.",
-             Z_KOMP: "Pada data 2026, sekitar 9% pilihan di zona ini lolos (3 dari 34).",
-             Z_RISIKO: "Pada data 2026, sekitar 2% pilihan di zona ini lolos (3 dari 155)."}
+INFO_ZONA = {Z_BAIK: "Pada data 2026, sekitar 4 dari 10 pilihan di zona ini lolos (5 dari 12) — tetap bukan jaminan.",
+             Z_KOMP: "Pada data 2026, sekitar 21% pilihan di zona ini lolos (3 dari 14).",
+             Z_RISIKO: "Pada data 2026, sekitar 2% pilihan di zona ini lolos (3 dari 172)."}
 FILTER_BAIK, FILTER_BAIK_KOMP, FILTER_SEMUA = "Peluang baik saja", "Peluang baik + Kompetitif", "Semua"
 FILTER_LAMA = {"AMAN saja": FILTER_BAIK, "AMAN + KOMPETITIF": FILTER_BAIK_KOMP}     # daftar lama yang sudah tersimpan
 
@@ -343,16 +343,46 @@ def analisis_batas(tb, batas):
     return per, per_ptn, elim[KOLOM_ELIM]
 
 
+def keterangan_prodi_sama(tb):
+    """Siswa yang memilih PRODI + PTN yang sama dengan siswa lain, tetapi peluangnya LEBIH KECIL dari sebagian pemilih lain,
+    diberi keterangan otomatis. Pemilih dengan peluang tertinggi (atau seri teratas) tidak diberi keterangan.
+    Mengembalikan {no_siswa: teks}."""
+    rows = []
+    for r in tb.to_dict("records"):
+        for k in ("1", "2"):
+            ptn, prodi, p = r.get(f"PTN Pilihan {k}"), r.get(f"Prodi Pilihan {k}"), r.get(f"Peluang P{k}")
+            if isinstance(ptn, str) and ptn and isinstance(prodi, str) and prodi and p is not None and not pd.isna(p):
+                rows.append({"no": int(r["No"]), "k": int(k), "ptn": ptn, "prodi": prodi, "p": float(p)})
+    if not rows:
+        return {}
+    g = pd.DataFrame(rows).groupby(["ptn", "prodi", "no"], as_index=False).agg(
+        p=("p", "max"), pil=("k", lambda s: " & ".join(str(x) for x in sorted(set(s)))))   # siswa yang sama dihitung sekali
+    g["n"] = g.groupby(["ptn", "prodi"])["no"].transform("size")
+    g["lebih"] = g.groupby(["ptn", "prodi"])["p"].transform(lambda s: pd.Series([(s > x + 1e-9).sum() for x in s], index=s.index))
+    g = g[(g["n"] >= 2) & (g["lebih"] > 0)].sort_values(["no", "pil"])
+    out = {}
+    for r in g.itertuples():
+        if r.lebih == r.n - 1:
+            seg = f"peluang siswa ini paling kecil (urutan {r.n} dari {r.n})"
+        else:
+            seg = f"peluang siswa ini lebih kecil dari {r.lebih} siswa lain (urutan {r.lebih + 1} dari {r.n})"
+        teks = f"Pilihan {r.pil} ({r.prodi} di {r.ptn}) juga dipilih siswa lain, total {r.n} siswa: {seg}"
+        out[int(r.no)] = f"{out[int(r.no)]} | {teks}" if int(r.no) in out else teks
+    return out
+
+
 def tambahkan_info_batas(R, tb, catatan):
     """Tambah kolom 'Status Batas' dan 'Keterangan' ke tabel massal.
-    Keterangan = catatan manual (jika ada) kalau tidak, teks otomatis dari analisis batas."""
+    Keterangan = catatan manual (jika ada) kalau tidak, teks otomatis: info batas PTN + info prodi sama dengan siswa lain."""
     tb = tb.copy()
+    sama = keterangan_prodi_sama(tb)       # info prodi+PTN sama dengan siswa lain (peluang lebih kecil)
     if not R.batas:
         tb["Status Batas"] = ""
-        tb["Keterangan"] = [(catatan or {}).get(int(n)) or "" for n in tb["No"]]
-        return tb, pd.DataFrame(columns=KOLOM_PTN), pd.DataFrame(columns=KOLOM_ELIM), {}
+        auto = {int(n): sama.get(int(n), "") for n in tb["No"]}
+        tb["Keterangan"] = [(catatan or {}).get(int(n)) or auto[int(n)] for n in tb["No"]]
+        return tb, pd.DataFrame(columns=KOLOM_PTN), pd.DataFrame(columns=KOLOM_ELIM), auto
     per, per_ptn, elim = analisis_batas(tb, R.batas)
-    auto = {int(n): per.get(int(n), ("", ""))[1] for n in tb["No"]}
+    auto = {int(n): " | ".join(x for x in (per.get(int(n), ("", ""))[1], sama.get(int(n), "")) if x) for n in tb["No"]}
     tb["Status Batas"] = [per.get(int(n), ("", ""))[0] for n in tb["No"]]
     tb["Keterangan"] = [(catatan or {}).get(int(n)) or auto[int(n)] for n in tb["No"]]
     return tb, per_ptn, elim, auto
