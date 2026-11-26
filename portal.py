@@ -60,12 +60,14 @@ with tab_rekom:
             r = m.evaluasi(R, SIS, rec_pil.get(f"ptn{k}"), rec_pil.get(f"prodi{k}"), rec_pil.get(f"nilai{k}"), p2, CUT_A, CUT_K)
             if r:
                 baris.append({"Pilihan": jud, "PTN": r["row"]["ptn"], "Program Studi": r["row"]["prodi"],
+                              "Mapel Pendukung": r["row"]["jenis_mapel"] if isinstance(r["row"]["jenis_mapel"], str) else "-",
                               "Peluang (%)": r["p"] * 100, "Status": f"{IKON[r['status']]} {r['status']}"})
         if baris:
             st.subheader("Pilihan kamu saat ini")
             st.dataframe(pd.DataFrame(baris), hide_index=True, column_config={
                 "Peluang (%)": st.column_config.NumberColumn(format="%.1f"),
-                "PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large")})
+                "PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large"),
+                "Mapel Pendukung": st.column_config.TextColumn(width="medium")})
 
     # ------------------------------------------------------------------ daftar rekomendasi
     st.subheader("Daftar rekomendasi untuk kamu")
@@ -83,18 +85,21 @@ with tab_rekom:
                    f"diurutkan menurut peluang sebagai **{rec['sumber']}** · filter: {m.nama_filter(rec['status_filter'])}")
         if rec["catatan"]:
             st.info(rec["catatan"])
-        cari = st.text_input("Cari prodi / PTN di daftar ini", key=f"cari_{rec['id']}", placeholder="mis. teknik, IPB")
+        cari = st.text_input("Cari prodi / PTN / mapel di daftar ini", key=f"cari_{rec['id']}", placeholder="mis. teknik, IPB, Biologi")
         if cari:
             d = d[d["prodi"].str.contains(cari, case=False, na=False, regex=False)
-                  | d["ptn"].str.contains(cari, case=False, na=False, regex=False)]
+                  | d["ptn"].str.contains(cari, case=False, na=False, regex=False)
+                  | d["jenis_mapel"].fillna("").str.contains(cari, case=False, na=False, regex=False)]
         out = pd.DataFrame({
-            "Nama PTN": d["ptn"], "Program Studi": d["prodi"], "Jenjang": d["jenjang"], "Daya Tampung 2026": d["dt_2026"],
+            "Nama PTN": d["ptn"], "Program Studi": d["prodi"], "Jenjang": d["jenjang"],
+            "Mapel Pendukung": d["jenis_mapel"].fillna("-"), "Daya Tampung 2026": d["dt_2026"],
             "Peluang P1 (%)": d["p1"] * 100, "Status P1": d["status1"].map(lambda s: f"{IKON[s]} {s}"),
             "Peluang P2 (%)": d["p2"] * 100, "Status P2": d["status2"].map(lambda s: f"{IKON[s]} {s}"),
             "Provinsi": d["provinsi"]})
         st.caption(f"{len(out)} prodi ditampilkan.")
         st.dataframe(out, hide_index=True, height=min(560, 40 + 36 * max(len(out), 3)), column_config={
             "Nama PTN": st.column_config.TextColumn(width="large"), "Program Studi": st.column_config.TextColumn(width="large"),
+            "Mapel Pendukung": st.column_config.TextColumn(width="medium"),
             "Daya Tampung 2026": st.column_config.NumberColumn(format="%d"),
             "Peluang P1 (%)": st.column_config.NumberColumn(format="%.1f"),
             "Peluang P2 (%)": st.column_config.NumberColumn(format="%.1f")})
